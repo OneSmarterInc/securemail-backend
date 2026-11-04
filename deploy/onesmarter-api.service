@@ -26,4 +26,5 @@ ReadWritePaths=/var/lib/onesmarter /run/onesmarter
 LimitCORE=0
 
 [Install]
+Alias=securemailservice.service
 WantedBy=onesmarter.target

@@ -49,6 +49,7 @@ def test_native_stack_uses_one_account_and_preserves_custodian_unseal():
         assert "Type=exec" in unit
         assert "User=ubuntu\n" in unit
         assert "Group=ubuntu\n" in unit
+    assert "Alias=securemailservice.service" in files["onesmarter-api.service"]
     key = files["onesmarter-keyservice.service"]
     assert "User=ubuntu\n" in key
     assert "Group=ubuntu\n" in key
