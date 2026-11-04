@@ -1,5 +1,7 @@
 # OneSmarter Secure Mail — backend
 
+Connect SelfPay using the existing API domain: [integration settings and rollout guide](SELFPAY_INTEGRATION_SETUP.md).
+
 Read the [complete service-by-service deployment and first-use guide](COMPLETE_DEPLOYMENT_GUIDE.md) for the frontend/maintenance distinction, private key service, first custodian, configuration and startup sequence.
 
 Start with [AWS + Vercel deployment guide](DEPLOYMENT_GUIDE.md). This is the standalone backend repository. The frontend is in [securemail-frontend](https://github.com/OneSmarterInc/securemail-frontend). Historical monorepo instructions below are reference only; the split deployment guide controls current hosting. Production startup is supported with strict checks; see [PRODUCTION_STARTUP.md](PRODUCTION_STARTUP.md). Independent security approval remains outstanding.

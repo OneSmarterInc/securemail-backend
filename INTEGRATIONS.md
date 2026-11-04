@@ -28,8 +28,8 @@ SelfPay service environment:
 
 ```dotenv
 SECURE_MAIL_ENABLED=true
-SECURE_MAIL_URL=https://integration.example.com
-SECURE_MAIL_PORTAL_URL=https://secure-mail.example.com
+SECURE_MAIL_URL=https://securemailbackend.onesmarter.com
+SECURE_MAIL_PORTAL_URL=https://securemail.onesmarter.com
 SECURE_MAIL_KEY_ID=selfpay
 SECURE_MAIL_SECRET=<independent random secret of at least 32 characters>
 SECURE_MAIL_ALLOW_LOOPBACK_HTTP=false
@@ -55,7 +55,7 @@ Secure Mail uses a server-only `SECURE_MAIL_INTEGRATIONS` JSON mapping:
 
 Use an existing active, MFA-confirmed service owner with the correct organization and working Secure Mail SMTP/OTP credentials. The integration does not create an administrator or expose staff privileges to patients. Configure `PUBLIC_URL`, trusted origins, HTTPS proxy handling, cookie security, the existing encryption/key service and outbox mail worker as documented by Secure Mail. Keep all secrets in deployment secret storage or an access-restricted environment file. Do not put the JSON secret in frontend build variables, logs or version control.
 
-For the existing split staff/recipient ingress, use the staged `deploy/integration-nginx.conf.example` as a separately reviewed workload hostname. It accepts only the signed thread-creation endpoint, requires client-certificate authentication and TLS 1.3, and exposes no browser API. Add the workload hostname to Django's `ALLOWED_HOSTS`; trust forwarded HTTPS only from the configured private proxy/socket. Keep staff PQ transport policy intact. The Python adapter supports a private CA and a client certificate/key; it always verifies the server certificate/hostname. `SECURE_MAIL_PORTAL_URL` is the recipient **origin**, while Secure Mail's `RECIPIENT_PUBLIC_URL` includes `/recipient`. These values must refer to the same recipient host. Set both origins explicitly for local tests; loopback HTTP requires the development-only flag.
+For the existing AWS API hostname, follow [the shared-host setup guide](SELFPAY_INTEGRATION_SETUP.md); no new DNS record is needed. The API template requires mTLS only on the integration endpoint and retains the API PQ policy. As an alternative for split staff/recipient ingress, use the staged `deploy/integration-nginx.conf.example` as a separately reviewed workload hostname. It accepts only the signed thread-creation endpoint, requires client-certificate authentication and TLS 1.3, and exposes no browser API. Add the workload hostname to Django's `ALLOWED_HOSTS`; trust forwarded HTTPS only from the configured private proxy/socket. Keep staff PQ transport policy intact. The Python adapter supports a private CA and a client certificate/key; it always verifies the server certificate/hostname. `SECURE_MAIL_PORTAL_URL` is the recipient **origin**, while Secure Mail's `RECIPIENT_PUBLIC_URL` includes `/recipient`. These values must refer to the same recipient host. Set both origins explicitly for local tests; loopback HTTP requires the development-only flag.
 
 Secure Mail currently documents existing production release gates in `DEPLOYMENT.md` and `RELEASE_GATES.md`. This integration does not waive or bypass those gates. No public production enablement is implied by a successful local run.
 
@@ -63,13 +63,7 @@ The new MySelfPay backend needs Django migration `0010_booking_chat` (SQL: `ops/
 
 Secure Mail adds Django migration `0024_integrationnonce_portalmailbox_portalchallenge_and_more`, after the concurrent `0023_message_history_index` change. Apply it under that deployment's normal reviewed migration/backup process before enabling the integration. Its schema is separate from SelfPay's schema.
 
-Schedule this command at least once per minute under SelfPay's service identity and environment:
-
-```bash
-/var/www/SelfPay/.venv/bin/python /var/www/SelfPay/booking_chat.py --maximum 25
-```
-
-It reads `BOOKING_DATABASE` or `DATABASE_URL`. For local SQLite, provide `--database /absolute/path/to/review.sqlite3`. It prints only the number of completed handoffs, never patient details. Monitor pending row age/attempts through an approved operational process. Handoffs stop retrying only on success, booking retention cleanup, or an explicitly reviewed operator action; invalid credentials therefore stay pending until repaired.
+For the Django SelfPay backend, use the supervised `process_booking_chats --watch` command above. The standalone `booking_chat.py` CLI is for the legacy application only; do not run both workers. Monitor pending booking age and failures without logging patient content.
 
 ## Security and lifecycle
 
