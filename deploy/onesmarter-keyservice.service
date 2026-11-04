@@ -1,19 +1,20 @@
 [Unit]
+PartOf=onesmarter.target
 Description=OneSmarter sealed key service
 After=network-online.target
 Wants=network-online.target
-RequiresMountsFor=/var/lib/onesmarter-key
+RequiresMountsFor=/var/www/securemail-backend /var/lib/onesmarter-key
 
 [Service]
-Type=simple
+Type=exec
 User=onesmarter-key
 Group=onesmarter-key
-WorkingDirectory=/opt/onesmarter-key/current
+WorkingDirectory=/var/www/securemail-backend/current
 EnvironmentFile=/etc/onesmarter-key/service.env
 UMask=0077
 # Single-EC2 native profile: loopback only; no public 8443 security-group rule.
 # Match the origin and certificate paths to your approved PKI.
-ExecStart=/opt/onesmarter-key/venv/bin/python -m backend.keyservice serve --store /var/lib/onesmarter-key/store.sqlite3 --backup-directory /var/lib/onesmarter-key/backups --trusted-checkpoint /etc/onesmarter-trust/checkpoint.json --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/server.pem --key /etc/onesmarter-key/pki/server.key --ca /etc/onesmarter-key/pki/ca.pem --host 127.0.0.1 --port 8443 --origin https://custody.onesmarter.com
+ExecStart=/var/www/securemail-backend/venv/bin/python -m backend.keyservice serve --store /var/lib/onesmarter-key/store.sqlite3 --backup-directory /var/lib/onesmarter-key/backups --trusted-checkpoint /etc/onesmarter-trust/checkpoint.json --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/server.pem --key /etc/onesmarter-key/pki/server.key --ca /etc/onesmarter-key/pki/ca.pem --host 127.0.0.1 --port 8443 --origin https://custody.onesmarter.com
 Restart=on-failure
 RestartSec=10
 NoNewPrivileges=true
@@ -24,4 +25,4 @@ ReadWritePaths=/var/lib/onesmarter-key
 LimitCORE=0
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=onesmarter.target

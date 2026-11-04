@@ -1,0 +1,8 @@
+[Unit]
+Description=OneSmarter Secure Mail stack (custodian unseal remains manual)
+Requires=onesmarter-keyservice.service onesmarter-api.service onesmarter-worker.service onesmarter-beat.service
+After=onesmarter-keyservice.service onesmarter-api.service onesmarter-worker.service onesmarter-beat.service
+# The installer adds the selected PostgreSQL cluster, Redis and nginx dependencies.
+
+[Install]
+WantedBy=multi-user.target

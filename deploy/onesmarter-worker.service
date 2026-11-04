@@ -1,15 +1,17 @@
 [Unit]
+PartOf=onesmarter.target
 Description=OneSmarter Secure Mail Celery worker
-After=network-online.target
-RequiresMountsFor=/var/lib/onesmarter
+After=network-online.target onesmarter-keyservice.service
+RequiresMountsFor=/var/www/securemail-backend /var/lib/onesmarter
 
 [Service]
+Type=exec
 User=onesmarter
 Group=onesmarter
-WorkingDirectory=/opt/onesmarter/current
+WorkingDirectory=/var/www/securemail-backend/current
 EnvironmentFile=/etc/onesmarter/backend.env
 Environment=DJANGO_READ_DOT_ENV=false
-ExecStart=/opt/onesmarter/venv/bin/celery -A backend.config.celery worker --loglevel=INFO --concurrency=2
+ExecStart=/var/www/securemail-backend/venv/bin/celery -A backend.config.celery worker --loglevel=INFO --concurrency=2
 Restart=on-failure
 RestartSec=10
 UMask=0077
@@ -21,4 +23,4 @@ ReadWritePaths=/var/lib/onesmarter
 LimitCORE=0
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=onesmarter.target

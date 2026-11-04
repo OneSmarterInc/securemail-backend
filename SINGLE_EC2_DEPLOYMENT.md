@@ -1,5 +1,8 @@
 # Single EC2 backend and Vercel frontend: deployment order
 
+Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
+
+
 Updated 2026-11-04. Selected layout: one Ubuntu EC2 instance for nginx, Django,
 Celery, PostgreSQL, Redis and the sealed key service; Vercel for React. No private
 DNS service or second key EC2 instance is required. This guide supplements the

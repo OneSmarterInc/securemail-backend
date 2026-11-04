@@ -1,5 +1,8 @@
 # Production startup configuration
 
+Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
+
+
 Updated 2026-11-04 at the owner's request. Production and staging now start when
 their configuration is valid. The unconditional Django and key-service refusals
 are removed. This change is not independent cryptographic approval or evidence

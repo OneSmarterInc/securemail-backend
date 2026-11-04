@@ -1,5 +1,8 @@
 # OneSmarter Secure Mail — backend
 
+Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
+
+
 Connect SelfPay using the existing API domain: [integration settings and rollout guide](SELFPAY_INTEGRATION_SETUP.md).
 
 Read the [complete service-by-service deployment and first-use guide](COMPLETE_DEPLOYMENT_GUIDE.md) for the frontend/maintenance distinction, private key service, first custodian, configuration and startup sequence.

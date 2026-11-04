@@ -1,5 +1,8 @@
 # AWS backend + Vercel frontend deployment
 
+Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
+
+
 Read the [complete service-by-service deployment and first-use guide](COMPLETE_DEPLOYMENT_GUIDE.md) for the frontend/maintenance distinction, private key service, first custodian, configuration and startup sequence.
 
 Prepared 2026-11-04. Antivirus is removed from requirements and code at the owner's request; uploaded documents are not malware-scanned. This is a deployment preparation guide, not a release approval.

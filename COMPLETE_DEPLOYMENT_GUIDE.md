@@ -1,5 +1,8 @@
 # OneSmarter Secure Mail: complete deployment and first-use guide
 
+Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
+
+
 Date: 2026-11-04 (Asia/Kolkata). Audience: the owner and deployment operator.
 
 This guide describes native Linux services on AWS and a static React deployment
