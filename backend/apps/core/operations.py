@@ -9,37 +9,32 @@ from django.db.models import Q
 from django.utils import timezone
 
 from . import storage
-from .models import Attachment, AuditEvent, DeliveryJob
+from .models import Attachment, DeliveryJob
 from .services import audit, lock_organization
 
 
-def report(*, max_archive_age: int, min_free_bytes: int) -> dict:
+def report(*, min_free_bytes: int) -> dict:
     now = timezone.now()
-    pending = AuditEvent.objects.filter(archive__isnull=True)
-    oldest = pending.order_by("occurred_at").values_list("occurred_at", flat=True).first()
     disk = shutil.disk_usage(settings.RUNTIME_DIR)
-    age = int((now - oldest).total_seconds()) if oldest else 0
     stalled = DeliveryJob.objects.filter(
         Q(state="uncertain") | Q(state="sending", updated_at__lt=now - timedelta(minutes=10))
     ).count()
     issues = []
-    if not settings.AUDIT_BUCKET or settings.AUDIT_RETENTION_DAYS <= 0:
-        issues.append("archive_not_configured")
-    if age > max_archive_age:
-        issues.append("archive_backlog_over_limit")
     if disk.free < min_free_bytes:
         issues.append("storage_free_space_low")
     if stalled:
         issues.append("delivery_outcome_uncertain")
     return {
         "checked_at": now.isoformat(),
+        "audit_storage": "database",
+        "archive_enabled": False,
         "issues": issues,
         "disk_free_bytes": disk.free,
-        "pending_archive": pending.count(),
-        "oldest_pending_seconds": age,
+        "pending_archive": 0,
+        "oldest_pending_seconds": 0,
         "uncertain_deliveries": stalled,
         "staged_uploads": Attachment.objects.filter(message=None).exclude(state="deleted").count(),
-        "note": "Configuration/backlog signals only; not a live archive or recovery certification.",
+        "note": "Operational signals only; not a recovery certification.",
     }
 
 

@@ -1,13 +1,7 @@
 import csv
-import hashlib
 import io
-import json
-import logging
 from datetime import timedelta
 
-import boto3
-from botocore.config import Config
-from django.conf import settings
 from django.core import signing
 from django.db import transaction
 from django.db.models import Max, Q
@@ -18,12 +12,11 @@ from rest_framework.response import Response
 
 from .auth import recent_mfa
 from .http import Problem, endpoint, unavailable
-from .models import AuditArchive, AuditBatch, AuditEvent, AuditExport
+from .models import AuditEvent, AuditExport
 from .services import audit, paginate
 
 
 def event_data(event):
-    archived = hasattr(event, "archive")
     return {
         "id": str(event.pk),
         "sequence": event.sequence,
@@ -36,21 +29,15 @@ def event_data(event):
         "target_id": event.target_id,
         "outcome": event.outcome,
         "metadata": event.metadata,
-        "archive_state": "archived" if archived else "pending_archive",
-        "archive": {
-            "version": event.archive.version_id,
-            "retain_until": event.archive.retain_until,
-            "digest": event.archive.digest,
-        }
-        if archived
-        else None,
+        "archive_state": "database_only",
+        "archive": None,
     }
 
 
 def filtered(org, params, snapshot, high_water):
     query = AuditEvent.objects.filter(
         organization=org, occurred_at__lte=snapshot, sequence__lte=high_water
-    ).select_related("archive")
+    )
     q = str(params.get("q", ""))[:200].strip()
     if q:
         query = query.filter(
@@ -122,22 +109,18 @@ def events(request):
             **meta,
             "snapshot": snapshot_token,
             "snapshot_at": snapshot,
-            "archive_enabled": bool(settings.AUDIT_BUCKET),
-            **archive_lag(request.user.organization),
-            "pending_archive": AuditEvent.objects.filter(
-                organization=request.user.organization, archive__isnull=True
-            ).count(),
+            "archive_enabled": False,
+            "audit_storage": "database",
+            "oldest_pending_seconds": 0,
+            "archive_overdue": False,
+            "pending_archive": 0,
         }
     )
 
 
 @endpoint(["GET"], admin=True)
 def event_detail(request, ident):
-    event = (
-        AuditEvent.objects.select_related("archive")
-        .filter(pk=ident, organization=request.user.organization)
-        .first()
-    )
+    event = AuditEvent.objects.filter(pk=ident, organization=request.user.organization).first()
     if not event:
         unavailable()
     audit(request.user.organization, request.user, "audit.viewed", "audit_event", event.pk)
@@ -239,135 +222,3 @@ def download_export(request, ident):
     response = HttpResponse(stream.getvalue(), content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = 'attachment; filename="audit-events.csv"'
     return response
-
-
-def archive_lag(org=None):
-    pending = AuditEvent.objects.filter(archive__isnull=True)
-    if org is not None:
-        pending = pending.filter(organization=org)
-    oldest = pending.order_by("occurred_at").values_list("occurred_at", flat=True).first()
-    age = max(0, int((timezone.now() - oldest).total_seconds())) if oldest else 0
-    overdue = age > settings.AUDIT_ARCHIVE_MAX_LAG_SECONDS
-    if overdue:
-        logging.getLogger("securemail.audit").error(
-            "audit_archive_lag_exceeded oldest_seconds=%s threshold_seconds=%s",
-            age,
-            settings.AUDIT_ARCHIVE_MAX_LAG_SECONDS,
-        )
-    return {"oldest_pending_seconds": age, "archive_overdue": overdue}
-
-
-def archive_pending():
-    """Bounded drain, durable retry batches, no DB row lock across S3 I/O."""
-    from .archive_verify import MAX_EVENT_BYTES, read_batch_verified
-    from .outbox_lock import outbox_lock
-
-    archive_lag()
-    if not settings.AUDIT_BUCKET or settings.AUDIT_RETENTION_DAYS <= 0:
-        return False
-    with outbox_lock(namespace=2) as acquired:
-        if not acquired:
-            return False
-        client = boto3.client(
-            "s3",
-            region_name=settings.AWS_REGION,
-            config=Config(
-                connect_timeout=5, read_timeout=30, retries={"max_attempts": 2, "mode": "standard"}
-            ),
-        )
-        for _ in range(settings.AUDIT_ARCHIVE_MAX_BATCHES):
-            batch = AuditBatch.objects.filter(archived_at=None).order_by("sequence", "id").first()
-            if batch is None:
-                first = (
-                    AuditEvent.objects.filter(archive__isnull=True)
-                    .order_by("occurred_at", "id")
-                    .first()
-                )
-                if first is None:
-                    return False
-                events = list(
-                    AuditEvent.objects.filter(organization=first.organization, archive__isnull=True)
-                    .select_related("archive")
-                    .order_by("sequence", "id")[: settings.AUDIT_ARCHIVE_BATCH_SIZE]
-                )
-                last = (
-                    AuditBatch.objects.filter(organization=first.organization)
-                    .order_by("-sequence")
-                    .first()
-                )
-                batch = AuditBatch(
-                    organization=first.organization,
-                    sequence=last.sequence + 1 if last else 1,
-                    previous_digest=last.digest if last else "0" * 64,
-                    retain_until=(
-                        timezone.now() + timedelta(days=settings.AUDIT_RETENTION_DAYS)
-                    ).replace(microsecond=0),
-                )
-                value = {
-                    "schema": 2,
-                    "organization": str(first.organization_id),
-                    "batch_id": str(batch.pk),
-                    "batch_sequence": batch.sequence,
-                    "previous_digest": batch.previous_digest,
-                    "events": [event_data(e) for e in events],
-                }
-                batch.payload = json.dumps(
-                    value, sort_keys=True, default=str, separators=(",", ":")
-                )
-                while len(batch.payload.encode()) > MAX_EVENT_BYTES:
-                    if len(value["events"]) == 1:
-                        raise RuntimeError(
-                            "Audit event exceeds archive size limit; operator action required."
-                        )
-                    value["events"] = value["events"][: len(value["events"]) // 2]
-                    batch.payload = json.dumps(
-                        value, sort_keys=True, default=str, separators=(",", ":")
-                    )
-                batch.digest = hashlib.sha256(batch.payload.encode()).hexdigest()
-                batch.save()
-            key = f"batches/{batch.organization_id}/{batch.pk}.json"
-            if hashlib.sha256(batch.payload.encode()).hexdigest() != batch.digest:
-                raise RuntimeError("Pending audit batch digest mismatch.")
-            result = client.put_object(
-                Bucket=settings.AUDIT_BUCKET,
-                Key=key,
-                Body=batch.payload.encode(),
-                ContentType="application/json",
-                ServerSideEncryption="AES256",
-                ObjectLockMode="COMPLIANCE",
-                ObjectLockRetainUntilDate=batch.retain_until,
-                Metadata={"sha256": batch.digest},
-            )
-            version = result.get("VersionId")
-            if not version:
-                raise RuntimeError("Audit archive did not return a version reference.")
-            entry = {
-                "object_key": key,
-                "version_id": version,
-                "digest": batch.digest,
-                "retain_until": batch.retain_until.isoformat(),
-                "organization": str(batch.organization_id),
-                "batch_id": str(batch.pk),
-                "batch_sequence": batch.sequence,
-                "previous_digest": batch.previous_digest,
-            }
-            value = read_batch_verified(client, settings.AUDIT_BUCKET, entry)
-            with transaction.atomic():
-                AuditArchive.objects.bulk_create(
-                    [
-                        AuditArchive(
-                            event_id=e["id"],
-                            batch=batch,
-                            object_key=key,
-                            version_id=version,
-                            digest=batch.digest,
-                            retain_until=batch.retain_until,
-                        )
-                        for e in value["events"]
-                    ]
-                )
-                batch.version_id = version
-                batch.archived_at = timezone.now()
-                batch.save(update_fields=["version_id", "archived_at"])
-        archive_lag()
-        return AuditEvent.objects.filter(archive__isnull=True).exists()

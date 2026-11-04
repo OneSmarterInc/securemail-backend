@@ -31,7 +31,7 @@ custodian maintenance page bundled with the key service; no second React/Vercel
 project is needed. One systemd target starts several processes on one EC2.
 
 Commands with `REPLACE_WITH_...` need your actual value before execution. Source
-archive hashes, AWS region, retention, operator CIDR and provider credentials
+archive hashes, operator CIDR and provider credentials
 cannot be truthfully prefilled. Run blocks in order and stop on errors.
 
 **New application installation on an existing EC2:** follow the sections in order.
@@ -59,9 +59,7 @@ Associate a stable public address and configure the API domain
 its record. The examples use frontend origin `https://securemail.onesmarter.com`.
 Restrict the custody virtual host additionally by VPN/operator IP in nginx.
 
-Provision the real audit archive, retention and least-privilege instance role.
-Audit archival is separate from document storage and local evidence bundles.
-Do not invent a bucket name to bypass startup validation. AWS-managed EBS encryption
+Audit logs use the application database on this EC2; no S3 audit bucket is required. AWS-managed EBS encryption
 uses KMS; resolve the OS/disk encryption policy if the no-KMS requirement includes
 infrastructure. Application encryption does not encrypt every database/OS field.
 
@@ -73,27 +71,15 @@ ssh -i /path/to/your-ec2-key.pem ubuntu@REPLACE_WITH_EC2_PUBLIC_ADDRESS
 
 All following Linux commands run on EC2 except the explicitly OFF-HOST CA step.
 
-### 1.1. Prepare the audit bucket and EC2 role
+### 1.1. Audit logs remain in PostgreSQL
 
-In the AWS console, create a private S3 bucket in the approved region, enable
-versioning and Object Lock, block public access, and select SSE-S3 encryption.
-Record its exact name and region. Obtain approval for the retention period before
-writing any COMPLIANCE-locked object: it cannot be shortened after the write.
-See [AWS Object Lock setup](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-configure.html).
-
-Attach an EC2 instance role scoped to this bucket's `batches/` prefix. The current
-archive writer explicitly sets retention and then verifies the returned version:
-its role needs object write, version read and retention permissions, including
-`s3:PutObject`, `s3:PutObjectRetention`, `s3:GetObjectVersion` and
-`s3:GetObjectRetention`. Do not grant delete or bucket-policy administration to
-the application. Have the actual policy reviewed and test it against the deployed
-adapter; this is separate from a proposed key-checkpoint receiver's identity.
-[AWS retention permissions](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-managing.html).
-
-Use the instance role instead of putting long-lived AWS access keys in backend.env.
-Set `AUDIT_BUCKET`, `AWS_REGION` and the approved `AUDIT_RETENTION_DAYS` in step 10.
-An empty bucket setting will prevent Django startup. An unreachable or wrongly
-permissioned bucket will prevent successful archival even if startup succeeds.
+No audit bucket, Object Lock configuration or archive IAM role is needed. The
+application stores its searchable activity history in the same PostgreSQL database
+as conversations and accounts. External audit archival has been removed.
+No automatic second audit copy is written. Database append-only restrictions
+remain, but privileged server/database administrators can alter or destroy logs.
+See [DATABASE_AUDIT.md](DATABASE_AUDIT.md). Key-service integrity journals and
+recovery snapshots are separate security mechanisms and remain in place.
 
 ## 2. Install dependencies
 
@@ -261,14 +247,14 @@ with os.fdopen(fd, 'w') as stream:
     os.fsync(stream.fileno())
 os.chown(destination, 0, grp.getgrnam('ubuntu').gr_gid)
 os.chmod(destination, 0o640)
-print('Created backend.env; complete the provider and archive settings privately.')
+print('Created backend.env; complete the provider settings privately.')
 PY
 sudoedit /etc/onesmarter/backend.env
 ```
 
 Use the generated POSTGRES_PASSWORD privately at the database prompt below. Save
 an encrypted off-host copy of the completed environment. It is not the unseal key.
-The template is not runnable until the real archive and SMTP settings are filled.
+Complete the SMTP settings and certificate installation before starting services.
 
 ## 6. Local PostgreSQL, Redis and name resolution
 
@@ -465,8 +451,8 @@ EMAIL_HOST=smtp.ionos.com
 EMAIL_PORT=587
 ```
 
-Fill the real IONOS mailbox/password, authorized sender, AWS_REGION, AUDIT_BUCKET
-and approved positive AUDIT_RETENTION_DAYS. Preserve application signing/integrity/
+Fill the real IONOS mailbox/password and authorized sender. Remove obsolete `AUDIT_ARCHIVE_*`, `AUDIT_BUCKET` and
+`AUDIT_RETENTION_DAYS` entries. `AWS_REGION` is not required for local storage. Preserve application signing/integrity/
 search keys. Keep SelfPay disabled until its adapter and separate mTLS identities
 are deployed. Portal SMTP credentials also need setup; env alone does not replace them.
 
@@ -520,7 +506,7 @@ uses the service account; it fixes the earlier ubuntu-user read-permission issue
 
 ## 11. Migrations and first administrator
 
-Only after certificate files and real archive settings exist:
+After certificate files and database credentials are configured:
 
 ```bash
 securemail-manage migrate --plan
@@ -874,7 +860,7 @@ sudo -u ubuntu /var/www/securemail-backend/venv/bin/python scripts/verify_pq_end
 
 Verify staff/custodian MFA, saved portal IONOS credentials and authorized sender,
 recipient OTP, upload/read/download, sealed rejection, restart and coordinated
-off-host database/document/key restore. Check storage growth, archive lag, policy/
+off-host database/document/key restore. Check storage growth, policy/
 certificate expiry and alert ownership. Antivirus is intentionally not installed.
 Localhost/SCRAM does not prove PQ database transport. Complete the release review
 before accepting real confidential data.
@@ -902,7 +888,7 @@ Store the private CA and recovery secret off-host and retain coordinated backups
 |---|---|
 | Backend environment is empty or unavailable | Use the step-10 launcher. Run `sudo -u ubuntu test -r /etc/onesmarter/backend.env`; do not make the file world-readable. |
 | KEY_SERVICE_CA/CERT/KEY must name an existing file | Complete off-host signing and certificate installation; a CSR is not a certificate. |
-| Audit archive bucket, region and positive retention are required | Fill the actual approved settings; do not disable validation. |
+| Audit archive bucket is required | Update to the database-audit release which removes the archive requirement; do not change APP_ENV. |
 | keys.internal cannot resolve | Verify the step-6 hosts entry with `getent ahostsv4 keys.internal`. |
 | TLS unknown CA / hostname mismatch | Verify the signed chain and server SAN `keys.internal`; do not turn off verification. |
 | PQ runtime configuration fails | Inspect the venv's `ssl.OPENSSL_VERSION` and hybrid group support, not only the shell's `openssl version`. |

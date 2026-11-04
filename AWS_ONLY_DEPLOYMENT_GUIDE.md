@@ -1,5 +1,13 @@
 # AWS-only deployment guide â€” OneSmarter Secure Mail
 
+> Audit storage decision — 2026-11-04: staff/admin activity logs remain in the same
+> application PostgreSQL database on EC2. External audit archival code is removed; no audit bucket or second automatic
+> audit copy is required. Earlier mandatory S3/Object Lock audit requirements are
+> superseded. Database logs are not immutable against privileged administrators.
+> Key-service security journals, recovery snapshots and cryptographic release
+> gates remain separate and unchanged. See [DATABASE_AUDIT.md](DATABASE_AUDIT.md).
+
+
 **Installation sequence:** use [AWS_FROM_SCRATCH.md](AWS_FROM_SCRATCH.md) for the current native AWS commands. The detailed sections below are reference material; do not mix their historical paths with the current procedure.
 
 **Current account model:** all four Secure Mail processes use `ubuntu`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.

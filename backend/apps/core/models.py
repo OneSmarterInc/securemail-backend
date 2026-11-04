@@ -260,6 +260,8 @@ class AuditEvent(models.Model):
 
 
 class AuditBatch(models.Model):
+    """Historical archive schema only; no runtime writer after archive removal."""
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(Organization, on_delete=models.PROTECT)
     sequence = models.PositiveBigIntegerField()
@@ -279,6 +281,8 @@ class AuditBatch(models.Model):
 
 
 class AuditArchive(models.Model):
+    """Preserved historical references; never used for new audit events."""
+
     batch = models.ForeignKey(AuditBatch, null=True, on_delete=models.PROTECT)
     event = models.OneToOneField(
         AuditEvent, on_delete=models.PROTECT, primary_key=True, related_name="archive"

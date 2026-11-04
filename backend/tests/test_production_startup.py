@@ -44,9 +44,7 @@ def production_environment(tmp_path):
         "KEY_SERVICE_CERT": str(certs["workload"][0]),
         "KEY_SERVICE_KEY": str(certs["workload"][1]),
         "APP_RUNTIME_DIR": str(tmp_path / "runtime"),
-        "AUDIT_BUCKET": "synthetic-test-bucket",
         "AWS_REGION": "us-east-1",
-        "AUDIT_RETENTION_DAYS": "2192",
     }
 
 
@@ -67,7 +65,6 @@ def production_config(tmp_path, settings):
         TRUSTED_PROXY_UNIX_SOCKET=True,
         PQ_TRANSPORT_REQUIRED=True,
         RUNTIME_DIR=tmp_path / "runtime",
-        AUDIT_RETENTION_DAYS=2192,
     )
     for suffix in ("URL", "CA", "CERT", "KEY"):
         config["KEY_STATUS_" + suffix] = config["KEY_SERVICE_" + suffix]
@@ -90,7 +87,6 @@ def test_complete_production_config_is_accepted(production_config):
         ("KEY_STATUS_KEY", ""),
         ("MAIL_PROVIDER", "development"),
         ("TRUSTED_PROXY_UNIX_SOCKET", False),
-        ("AUDIT_RETENTION_DAYS", 0),
         ("DATABASES", {"default": {"ENGINE": "django.db.backends.sqlite3"}}),
     ],
 )
@@ -246,3 +242,9 @@ def test_production_cli_requires_checkpoint(tmp_path, checkpoint):
     assert result.returncode == 2
     assert "--trusted-checkpoint" in result.stderr
     assert not (tmp_path / "store").exists()
+
+
+def test_database_audit_needs_no_aws_configuration(production_config):
+    config, environment = production_config
+    config.update(AWS_REGION="")
+    validate_production(config, environment)

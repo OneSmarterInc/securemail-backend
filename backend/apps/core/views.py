@@ -71,7 +71,8 @@ def connection_settings(request):
             "mail": settings.MAIL_PROVIDER,
             "storage": settings.STORAGE_PROVIDER,
             "smtp_configured": smtp_settings.configured(request.user),
-            "archive_configured": bool(settings.AUDIT_BUCKET),
+            "archive_configured": False,
+            "audit_storage": "database",
             "crypto": settings.CRYPTO_PROVIDER,
             "document_encryption": "AES-256-GCM"
             if settings.CRYPTO_PROVIDER == "onesmarter-hybrid-v2"

@@ -44,14 +44,6 @@ def process_pending_task():
     process_pending()
 
 
-@shared_task(name="securemail.archive_audit", ignore_result=True)
-def archive_audit_task():
-    from .audit import archive_pending
-
-    if archive_pending():
-        archive_audit_task.delay()
-
-
 @shared_task(name="securemail.cleanup_transient", ignore_result=True)
 def cleanup_transient_task():
     """Bounded cleanup of abandoned uploads and fully-refilled rate buckets."""

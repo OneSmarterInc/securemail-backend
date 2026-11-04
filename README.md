@@ -1,5 +1,13 @@
 # OneSmarter Secure Mail — backend
 
+> Audit storage decision — 2026-11-04: staff/admin activity logs remain in the same
+> application PostgreSQL database on EC2. External audit archival code is removed; no audit bucket or second automatic
+> audit copy is required. Earlier mandatory S3/Object Lock audit requirements are
+> superseded. Database logs are not immutable against privileged administrators.
+> Key-service security journals, recovery snapshots and cryptographic release
+> gates remain separate and unchanged. See [DATABASE_AUDIT.md](DATABASE_AUDIT.md).
+
+
 Start here: [full sequential AWS setup](AWS_FROM_SCRATCH.md), using one `ubuntu` service user. Existing installations: [single-user migration](SINGLE_USER_DEPLOYMENT.md).
 
 Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.

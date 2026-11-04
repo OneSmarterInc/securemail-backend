@@ -105,11 +105,6 @@ def validate_production(config: Mapping, environment: Mapping[str, str]) -> None
             bool(config["S3_BUCKET"] and config["AWS_REGION"]),
             "S3 storage requires bucket and region",
         )
-    require(
-        bool(config["AUDIT_BUCKET"] and config["AWS_REGION"])
-        and config["AUDIT_RETENTION_DAYS"] > 0,
-        "Audit archive bucket, region and positive retention are required",
-    )
     if problems:
         # Report names/requirements only; never serialize configuration values.
         raise ImproperlyConfigured("Production configuration invalid: " + "; ".join(problems))

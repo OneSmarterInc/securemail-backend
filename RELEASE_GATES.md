@@ -1,5 +1,13 @@
 # Production release gates
 
+> Audit storage decision — 2026-11-04: staff/admin activity logs remain in the same
+> application PostgreSQL database on EC2. External audit archival code is removed; no audit bucket or second automatic
+> audit copy is required. Earlier mandatory S3/Object Lock audit requirements are
+> superseded. Database logs are not immutable against privileged administrators.
+> Key-service security journals, recovery snapshots and cryptographic release
+> gates remain separate and unchanged. See [DATABASE_AUDIT.md](DATABASE_AUDIT.md).
+
+
 Runtime update (2026-11-04): blanket Django/key-service production startup refusals were replaced by strict configuration validation at the owner's request. See PRODUCTION_STARTUP.md. This does not complete any independent review or deployed evidence gate below. Experimental audit/checkpoint code remains synthetic-only.
 
 
