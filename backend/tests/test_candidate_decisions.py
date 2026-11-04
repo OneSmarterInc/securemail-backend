@@ -3,6 +3,7 @@
 import copy
 import secrets
 import sqlite3
+import time
 import uuid
 from contextlib import closing
 
@@ -22,9 +23,12 @@ def live_service(vault, tmp_path, settings):
     yield from test_keyservice.live_service.__wrapped__(vault[:2], tmp_path, settings)
 
 
-def test_override_is_explicit_and_export_restores_verified_status(vault, monkeypatch):
+@pytest.mark.parametrize("uptime", [10.0, 1000.0])
+def test_override_is_explicit_and_export_restores_verified_status(vault, monkeypatch, uptime):
     from backend.apps.core import document_service
 
+    # Exercise both a freshly booted CI runner and a long-running host.
+    monkeypatch.setattr(time, "monotonic", lambda: uptime)
     store, secret, publisher, org, context, dek, wrapper = vault
     store.seal("custodian")
     publisher.down = True
@@ -45,7 +49,8 @@ def test_override_is_explicit_and_export_restores_verified_status(vault, monkeyp
         p.parse_object(body)["operation"] == "integrity_override" and mac for body, mac in rows
     )
     publisher.down = False
-    store.last_export_time = 0
+    # Expire the interval relative to the clock, not its unspecified epoch.
+    store.last_export_time = time.monotonic() - 301
     store.next_export_retry = 0
     store.tick()
     assert not store.override_active and not store.export_pending
