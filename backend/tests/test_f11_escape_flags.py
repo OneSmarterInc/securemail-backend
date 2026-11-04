@@ -90,7 +90,7 @@ def test_f11_explicit_opt_in_and_warning(tmp_path, monkeypatch, capsys, flag, ap
 
 @pytest.mark.parametrize("app_env", [None, "production", "staging"])
 @pytest.mark.parametrize("anchor", [False, True])
-def test_non_synthetic_service_cannot_start_without_review(
+def test_non_synthetic_service_rejects_synthetic_marker(
     tmp_path, monkeypatch, capsys, app_env, anchor
 ):
     monkeypatch.delenv("APP_ENV", raising=False)
@@ -106,7 +106,11 @@ def test_non_synthetic_service_cannot_start_without_review(
     with pytest.raises(SystemExit) as exc:
         cli.main()
     assert exc.value.code == 2
-    expected = "deployment remains blocked" if anchor else "--trusted-checkpoint is required"
+    expected = (
+        "Synthetic mode and --synthetic-only are forbidden"
+        if app_env
+        else "APP_ENV must be explicitly"
+    )
     assert expected in capsys.readouterr().err
     store.assert_not_called()
     server.assert_not_called()

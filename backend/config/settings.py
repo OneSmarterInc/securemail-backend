@@ -16,6 +16,8 @@ RUNTIME_DIR = Path(os.environ.get("APP_RUNTIME_DIR", str(BASE_DIR / ".runtime"))
 ENVIRONMENT = os.environ.get("APP_ENV")
 if not ENVIRONMENT or not ENVIRONMENT.strip():
     raise ImproperlyConfigured("APP_ENV must be explicitly set; no default environment is allowed.")
+if ENVIRONMENT not in {"development", "test", "staging", "production"}:
+    raise ImproperlyConfigured("APP_ENV must be development, test, staging, or production.")
 SYNTHETIC_MODE = ENVIRONMENT in {"development", "test"}
 PQ_TRANSPORT_REQUIRED = (
     not SYNTHETIC_MODE or os.environ.get("PQ_TRANSPORT_REQUIRED", "false") == "true"
@@ -26,6 +28,10 @@ ALLOWED_HOSTS = os.environ.get(
 ).split(",")
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
 if not SECRET_KEY:
+    if not SYNTHETIC_MODE:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be explicitly configured outside synthetic mode."
+        )
     secret_path = RUNTIME_DIR / "django.secret"
     if not secret_path.exists():
         raise ImproperlyConfigured(
@@ -256,13 +262,6 @@ LOGGING = {
     "loggers": {"securemail": {"handlers": ["console"], "level": "INFO", "propagate": False}},
 }
 
-# Never make a boolean environment flag substitute for a reviewed PQ implementation.
-if not SYNTHETIC_MODE:
-    raise ImproperlyConfigured(
-        "Production is blocked: the OneSmarter cryptographic review, PQ coverage, retention/region and "
-        "deployment evidence require security approval. See RELEASE_GATES.md."
-    )
-
 # Evidence preservation is explicitly local; deployment never switches it to AWS.
 EVIDENCE_DIRECTORY = Path(os.environ.get("EVIDENCE_DIRECTORY", str(RUNTIME_DIR / "evidence")))
 EVIDENCE_TSA_URL = os.environ.get("EVIDENCE_TSA_URL", "")
@@ -294,3 +293,10 @@ SECRET_KEY_FALLBACKS = [
 
 # Server-only integration credentials; never serialize these settings to browsers.
 SECURE_MAIL_INTEGRATIONS = _integration_json.loads(os.environ.get("SECURE_MAIL_INTEGRATIONS", "{}"))
+
+if not SYNTHETIC_MODE:
+    from .production import validate_production
+
+    validate_production(globals(), os.environ)
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000

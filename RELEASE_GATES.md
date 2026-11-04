@@ -1,5 +1,7 @@
 # Production release gates
 
+Runtime update (2026-11-04): blanket Django/key-service production startup refusals were replaced by strict configuration validation at the owner's request. See PRODUCTION_STARTUP.md. This does not complete any independent review or deployed evidence gate below. Experimental audit/checkpoint code remains synthetic-only.
+
 
 > Scope update — 2026-11-04: the owner removed antivirus from the product. Uploads undergo file-type/size validation, authorization, encryption and integrity checks; no malware verdict is produced. Historical scanning results below do not describe current functionality. Other release gates remain.
 

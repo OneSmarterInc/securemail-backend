@@ -1,6 +1,8 @@
 # OneSmarter Secure Mail — backend
 
-Start with [AWS + Vercel deployment guide](DEPLOYMENT_GUIDE.md). This is the standalone backend repository. The frontend is in [securemail-frontend](https://github.com/OneSmarterInc/securemail-frontend). Historical monorepo instructions below are reference only; the split deployment guide controls current hosting. Production release remains blocked.
+Read the [complete service-by-service deployment and first-use guide](COMPLETE_DEPLOYMENT_GUIDE.md) for the frontend/maintenance distinction, private key service, first custodian, configuration and startup sequence.
+
+Start with [AWS + Vercel deployment guide](DEPLOYMENT_GUIDE.md). This is the standalone backend repository. The frontend is in [securemail-frontend](https://github.com/OneSmarterInc/securemail-frontend). Historical monorepo instructions below are reference only; the split deployment guide controls current hosting. Production startup is supported with strict checks; see [PRODUCTION_STARTUP.md](PRODUCTION_STARTUP.md). Independent security approval remains outstanding.
 
 # OneSmarter Secure Mail
 
@@ -8,7 +10,7 @@ Start with [AWS + Vercel deployment guide](DEPLOYMENT_GUIDE.md). This is the sta
 > Scope update — 2026-11-04: the owner removed antivirus from the product. Uploads undergo file-type/size validation, authorization, encryption and integrity checks; no malware verdict is produced. Historical scanning results below do not describe current functionality. Other release gates remain.
 
 
-A working Django/React application for confidential document requests, protected conversations, recipient uploads, and administrator-managed staff access. **Synthetic development use only; production startup is intentionally blocked.**
+A working Django/React application for confidential document requests, protected conversations, recipient uploads, and administrator-managed staff access. **Production configuration is validated at startup; independent security review is still outstanding.**
 
 
 
@@ -282,5 +284,5 @@ D1–D6 and current evidence: [design record](DESIGN_DECISIONS_2026-11-04.md),
 
 Earlier test counts and CI results apply only to their earlier revisions.
 
-Production remains blocked; F-07 waits for the prerequisite merge and tests.
+Historical candidate release status: F-07 waits for the prerequisite merge and tests.
 

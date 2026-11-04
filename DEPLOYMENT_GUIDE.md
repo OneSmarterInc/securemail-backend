@@ -1,13 +1,13 @@
 # AWS backend + Vercel frontend deployment
 
+Read the [complete service-by-service deployment and first-use guide](COMPLETE_DEPLOYMENT_GUIDE.md) for the frontend/maintenance distinction, private key service, first custodian, configuration and startup sequence.
+
 Prepared 2026-11-04. Antivirus is removed from requirements and code at the owner's request; uploaded documents are not malware-scanned. This is a deployment preparation guide, not a release approval.
 
-**Current blocker:** the backend and key service deliberately refuse non-synthetic
-production startup. Independent crypto review, deployed PQ evidence, recovery,
-custody and other gates in `RELEASE_GATES.md` remain open. Do not change APP_ENV to
-development to expose a public instance or bypass that block. Infrastructure can
-be prepared now; production activation below is conditional on an approved,
-tested release that removes the block through normal code review.
+**Runtime status:** production startup is supported with strict validation. Follow
+[Production startup](PRODUCTION_STARTUP.md). Independent crypto review, deployed
+PQ evidence, recovery and custody gates remain open. Configuration acceptance is
+not security approval; the experimental audit candidate remains synthetic-only.
 
 ## 1. Domains and architecture
 
@@ -16,7 +16,7 @@ tested release that removes the block through normal code review.
 | API on AWS | `https://securemailbackend.onesmarter.com` | Owner supplied |
 | React app on Vercel | `https://securemail.onesmarter.com` | Proposed; confirm before DNS |
 | Custody gateway on AWS/private access | `https://custody.onesmarter.com` | Proposed; confirm before DNS |
-| Key service | `https://keys.internal:8443` | Private PKI/DNS placeholder |
+| Key service | `https://keys.internal:8443` | Private PKI; local `/etc/hosts` mapping |
 
 ```mermaid
 flowchart LR
@@ -37,6 +37,12 @@ flowchart LR
 Vercel serves static assets. API calls, uploads and downloads go directly from the
 browser to AWS; Vercel does not proxy confidential document bodies. Never put
 database, SMTP, signing, recovery or mTLS secrets into the frontend environment.
+
+For `keys.internal`, use a local `/etc/hosts` mapping to the key host's private
+IP on every API/worker and custody-gateway host. No Route 53 private zone is
+required. Keep the hostname in the HTTPS URL and server certificate; do not
+disable certificate verification. See COMPLETE_DEPLOYMENT_GUIDE.md for mapping,
+container and IP-change instructions.
 
 The split repositories are:
 
@@ -188,8 +194,8 @@ Follow `KEY_SERVICE_OPERATIONS.md`, `CUSTODIAN_ACCOUNTS.md` and
 `AUDIT_CANDIDATE.md`. Prepare the private PKI and separate workload/status/gateway
 identities; authorize exact certificate fingerprints and operations in policy.
 Initialize keys once, with off-host recovery custody; never place recovery secrets
-beside the live key store or in the frontend environment. Production remains
-blocked while the candidate design is awaiting independent approval.
+beside the live key store or in the frontend environment. Production runtime accepts the legacy store with an independently protected
+checkpoint; the experimental candidate remains restricted pending review.
 
 Custodian CLI commands (run on the authorized key-service administration host,
 under its OS identity and configured Django environment):
@@ -242,8 +248,8 @@ python manage.py migrate --noinput
 python manage.py bootstrap_admin --email admin@onesmarter.com
 ```
 
-These commands currently refuse production configuration. That is expected; do
-not bypass it. The bootstrap command prompts for a password and enforces first
+These commands validate the complete production environment. Fix missing settings
+rather than changing APP_ENV. The bootstrap command prompts for a password and enforces first
 staff MFA enrollment. It is distinct from creating a custodian account.
 
 Copy `deploy/onesmarter-{api,worker,beat}.service` to systemd, review paths and

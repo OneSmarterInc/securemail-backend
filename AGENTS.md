@@ -4,7 +4,7 @@ Read PRD.md, TECH_STACK.md, RULES.md, ROADMAP.md and the applicable architecture
 documents before changes. Follow DESIGN_DECISIONS_2026-11-04.md for the audit
 candidate. Match the existing Django/Python and React/strict TypeScript structure.
 
-- Preserve the production startup block and synthetic-only warnings. Internal AI
+- Preserve strict production configuration checks and candidate-only warnings. Internal AI
   decisions and passing tests never count as independent cryptographic approval.
 - Keep security changes small and reviewable. Do not change cryptographic suites,
   migration behavior or custody assumptions implicitly. F-07 is a separate change

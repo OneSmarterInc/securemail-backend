@@ -75,7 +75,11 @@ def main():
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8443)
     serve.add_argument("--origin", required=True)
-    serve.add_argument("--synthetic-only", action="store_true", required=True)
+    serve.add_argument(
+        "--synthetic-only",
+        action="store_true",
+        help="Explicit synthetic deployment marker; forbidden in production/staging",
+    )
     serve.add_argument("--allow-classical-synthetic", action="store_true")
     serve.add_argument("--allow-http-loopback-origin", action="store_true")
     args = parser.parse_args()
@@ -106,13 +110,18 @@ def main():
             )
         if args.allow_http_loopback_origin and args.host not in {"127.0.0.1", "localhost"}:
             parser.error("HTTP development origins require a loopback-only service bind.")
-        if os.environ.get("APP_ENV", "") not in {"development", "test"}:
+        environment = os.environ.get("APP_ENV", "")
+        if environment not in {"development", "test", "staging", "production"}:
+            parser.error("APP_ENV must be explicitly development, test, staging, or production")
+        if environment in {"staging", "production"}:
+            if args.synthetic_only or os.environ.get("SYNTHETIC_MODE", "false").lower() != "false":
+                parser.error(
+                    "Synthetic mode and --synthetic-only are forbidden in production/staging"
+                )
             if not args.trusted_checkpoint:
                 parser.error("--trusted-checkpoint is required outside synthetic environments")
-            parser.error(
-                "Non-synthetic key-service deployment remains blocked pending independent review; "
-                "a checkpoint does not authorize production use"
-            )
+            if not args.trusted_checkpoint.is_file():
+                parser.error("--trusted-checkpoint must name an independently provisioned file")
     candidate = os.environ.get("KEY_SERVICE_AUDIT_CANDIDATE", "").lower() == "true"
     store_type = KeyStore
     if candidate:
@@ -182,6 +191,8 @@ def main():
         created = store_type.initialize(store, secret)
         if candidate:
             created.export_enrollment(args.candidate_enrollment)
+        else:
+            created.record_event("offline-initialization", "initialized")
         print("Initialized sealed store. Keep recovery custody independent of this host.")
     elif args.command == "migrate-audit-candidate":
         secret = p.decode(getpass.getpass("Off-host v1 recovery secret: "), 32)
@@ -287,6 +298,11 @@ def main():
         store = store_type(
             args.store, args.backup_directory, trusted_checkpoint=args.trusted_checkpoint
         )
+        if os.environ.get("APP_ENV") in {"staging", "production"}:
+            # Refuse corrupt/rolled-back history before opening a listener, not just at unseal.
+            with store.transaction() as db:
+                store.verify_audit(db)
+                store.check_trusted_checkpoint(db)
         service = Service(
             store, args.policy, args.origin, allow_http_loopback=args.allow_http_loopback_origin
         )
@@ -297,7 +313,7 @@ def main():
             require_pq=not args.allow_classical_synthetic,
         ) as server:
             print(
-                "Synthetic key service started SEALED. Independent review/PQ deployment approval pending."
+                "Key service started SEALED. Configuration acceptance is not independent security approval."
             )
             try:
                 server.serve_forever()

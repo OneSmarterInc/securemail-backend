@@ -37,7 +37,7 @@ jobs:
           docker run --rm --user root -v "$PWD:/app" -e APP_ENV -e RUN_PQ_TRANSPORT -e RUN_KEY_SERVICE_LOAD securemail-pq-test sh -ec '
             python scripts/init_local.py
             python scripts/check_pq_transport.py
-            pytest backend/tests/test_keyservice.py backend/tests/test_pq_transport.py backend/tests/test_security_acceptance.py backend/tests/test_candidate_audit.py backend/tests/test_candidate_decisions.py backend/tests/test_checkpoint_transport.py backend/tests/test_mutable_field_rollback.py backend/tests/test_recovery_evidence.py backend/tests/test_s3_checkpoints.py -q
+            pytest backend/tests/test_production_startup.py backend/tests/test_keyservice.py backend/tests/test_pq_transport.py backend/tests/test_security_acceptance.py backend/tests/test_candidate_audit.py backend/tests/test_candidate_decisions.py backend/tests/test_checkpoint_transport.py backend/tests/test_mutable_field_rollback.py backend/tests/test_recovery_evidence.py backend/tests/test_s3_checkpoints.py -q
             cat .runtime/key-service-load.json
           '
   proxy:

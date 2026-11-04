@@ -11,6 +11,19 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def run_startup(arguments, environment=None):
+    # Embedded Windows PQ runtimes may pin another checkout in their ._pth file.
+    # Always exercise this checkout, including in fresh child processes.
+    bootstrap = f"import sys; sys.path.insert(0, {str(ROOT)!r}); "
+    if arguments[0] == "-c":
+        arguments = ["-c", bootstrap + arguments[1], *arguments[2:]]
+    elif arguments[0] == "-m":
+        arguments = [
+            "-c",
+            bootstrap
+            + f"import runpy; sys.argv=sys.argv[1:]; runpy.run_module({arguments[1]!r}, run_name='__main__')",
+            arguments[1],
+            *arguments[2:],
+        ]
     env = {
         key: value
         for key, value in os.environ.items()
@@ -52,8 +65,10 @@ def test_rp01_non_synthetic_environment_still_fails_closed(value):
     assert result.returncode != 0
     # Older runtimes reject mandatory PQ transport before reaching the release gate.
     assert (
-        "Production is blocked" in result.stderr
+        "APP_ENV must be development, test, staging, or production" in result.stderr
         or "PQ transport requires Python 3.15+" in result.stderr
+        or "PQ mode requires HTTPS" in result.stderr
+        or "Production configuration invalid" in result.stderr
     )
 
 

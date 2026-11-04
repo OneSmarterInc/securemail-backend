@@ -61,6 +61,6 @@ of this separate authentication database remains a review concern. Do not claim
 the document key-store checkpoint design protects it automatically.
 
 The visible synthetic warning was removed from this page at the owner's request.
-Backend production blocks and startup warnings remain. This implementation is
+Production configuration checks and candidate startup warnings remain. This implementation is
 local candidate functionality, pending independent security review; it is not
 production approval.

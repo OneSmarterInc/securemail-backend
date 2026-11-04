@@ -1,0 +1,26 @@
+[Unit]
+Description=OneSmarter sealed key service
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/onesmarter-key
+
+[Service]
+Type=simple
+User=onesmarter-key
+Group=onesmarter-key
+WorkingDirectory=/opt/onesmarter-key/current
+EnvironmentFile=/etc/onesmarter-key/service.env
+UMask=0077
+# Replace this example private IP and certificate paths before installation.
+ExecStart=/opt/onesmarter-key/venv/bin/python -m backend.keyservice serve --store /var/lib/onesmarter-key/store.sqlite3 --backup-directory /var/lib/onesmarter-key/backups --trusted-checkpoint /etc/onesmarter-trust/checkpoint.json --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/server.pem --key /etc/onesmarter-key/pki/server.key --ca /etc/onesmarter-key/pki/ca.pem --host 10.0.2.20 --port 8443 --origin https://custody.onesmarter.com
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/onesmarter-key
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target
