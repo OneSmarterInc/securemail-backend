@@ -89,6 +89,8 @@ def staff_client(staff):
 @pytest.fixture
 def sender_profile(settings, tmp_path, monkeypatch, staff):
     settings.MAIL_PROVIDER = "smtp"
+    settings.EMAIL_HOST_USER = "support@onesmarter.com"
+    settings.EMAIL_HOST_PASSWORD = "synthetic-environment-secret"
     settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
     settings.DEFAULT_FROM_EMAIL = "secure@onesmarter.com"
     settings.SMTP_SENDER_PROFILES_FILE = str(tmp_path / "senders.json")

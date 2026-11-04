@@ -88,7 +88,11 @@ def test_smtp_connect_failure_vs_submission_ambiguity(
     connection = Mock()
     if not during_send:
         connection.open.side_effect = ConnectionRefusedError()
-    monkeypatch.setattr(mail.smtp_settings, "connection", lambda user: (user.email, connection))
+    monkeypatch.setattr(
+        mail.smtp_settings,
+        "notification_connection",
+        lambda: ("support@onesmarter.com", connection),
+    )
     send = Mock(side_effect=ConnectionResetError())
     monkeypatch.setattr(mail.EmailMultiAlternatives, "send", send)
     job = DeliveryJob.objects.get()

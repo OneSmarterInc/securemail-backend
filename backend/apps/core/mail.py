@@ -162,11 +162,9 @@ def process_job(job_id, *, service_ready=None):
             if owner is None or owner.organization_id != job.organization_id:
                 raise senders.SenderUnavailable("No authorized staff SMTP identity")
             sender, smtp_connection = (
-                smtp_settings.otp_connection(owner)
-                if data.get("challenge_id")
-                or data.get("portal_challenge_id")
-                or data.get("portal_thread")
-                else smtp_settings.connection(owner)
+                smtp_settings.connection(owner)
+                if ordinary
+                else smtp_settings.notification_connection()
             )
             if ordinary and (
                 not job.actor
@@ -185,11 +183,13 @@ def process_job(job_id, *, service_ready=None):
                     (
                         OrganizationSMTP.objects.get(
                             organization_id=owner.organization_id
-                        ).sender_name,
+                        ).sender_name
+                        if ordinary
+                        else "OneSmarter Support",
                         sender,
                     )
                 ),
-                reply_to=[smtp_connection.username if data.get("challenge_id") else sender],
+                reply_to=[sender],
                 connection=smtp_connection,
                 to=[data["to"]],
                 headers={"Message-ID": f"<{job.pk}@{settings.COMPANY_DOMAIN}>"},

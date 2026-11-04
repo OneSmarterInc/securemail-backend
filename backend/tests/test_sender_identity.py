@@ -17,7 +17,7 @@ def test_global_notification_sender_is_ignored(staff_client, sender_profile, set
     process_job(job.pk)
     job.refresh_from_db()
     assert job.state == "provider_accepted"
-    assert parseaddr(mail.outbox[-1].from_email)[1] == "staff@onesmarter.com"
+    assert parseaddr(mail.outbox[-1].from_email)[1] == "support@onesmarter.com"
     assert not calls
 
 

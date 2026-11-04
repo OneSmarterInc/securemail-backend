@@ -386,3 +386,68 @@ def test_confirmation_action_requires_allowed_origin(configured, settings):
         data["provider_action"] = {"url": url, "expires_at": time.time() + 3600}
         assert signed(Client(), data).status_code == 400
     assert PortalThread.objects.count() == 0
+
+
+@pytest.mark.parametrize("kind", ["invitation", "otp", "reply"])
+def test_selfpay_notifications_use_environment_smtp(configured, settings, monkeypatch, kind):
+    from email.utils import parseaddr
+    from unittest.mock import Mock
+
+    from backend.apps.core import smtp_settings
+    from backend.apps.core.models import OrganizationSMTP, StaffSMTP
+
+    settings.SECURE_MAIL_INTEGRATIONS["selfpay"]["suppress_provider_notifications"] = False
+    response = signed(Client(), payload())
+    assert response.status_code == 201
+    thread_id = response.json()["id"]
+    if kind == "otp":
+        client = browser()
+        assert (
+            post(client, "code", {"email": "patient@example.test", "source": "selfpay"}).status_code
+            == 200
+        )
+        job = next(
+            j for j in DeliveryJob.objects.all() if mail.payload(j).get("portal_challenge_id")
+        )
+    elif kind == "reply":
+        client, _ = login("patient@example.test")
+        assert (
+            post(
+                client,
+                "threads/" + thread_id,
+                {"body": "Synthetic reply"},
+                HTTP_IDEMPOTENCY_KEY=uuid.uuid4().hex,
+            ).status_code
+            == 201
+        )
+        job = next(
+            j
+            for j in DeliveryJob.objects.all()
+            if mail.payload(j)["subject"] == "New secure message"
+        )
+    else:
+        job = DeliveryJob.objects.order_by("created_at").first()
+    assert not OrganizationSMTP.objects.exists()
+    assert not StaffSMTP.objects.exists()
+    settings.MAIL_PROVIDER = "smtp"
+    settings.EMAIL_HOST = "smtp.example.test"
+    settings.EMAIL_PORT = 465
+    settings.EMAIL_USE_TLS = False
+    settings.EMAIL_USE_SSL = True
+    settings.EMAIL_HOST_USER = "environment-login@example.test"
+    settings.EMAIL_HOST_PASSWORD = "synthetic-environment-password"
+    transport = Mock()
+    transport.send_messages.return_value = 1
+    factory = Mock(return_value=transport)
+    monkeypatch.setattr(smtp_settings, "SMTPBackend", factory)
+    mail.process_job(job.pk)
+    job.refresh_from_db()
+    assert job.state == "provider_accepted"
+    assert factory.call_args.kwargs["host"] == settings.EMAIL_HOST
+    assert factory.call_args.kwargs["username"] == settings.EMAIL_HOST_USER
+    assert factory.call_args.kwargs["password"] == settings.EMAIL_HOST_PASSWORD
+    assert factory.call_args.kwargs["use_ssl"] is True
+    assert factory.call_args.kwargs["use_tls"] is False
+    message = transport.send_messages.call_args.args[0][0]
+    assert parseaddr(message.from_email)[1] == "support@onesmarter.com"
+    assert message.reply_to == ["support@onesmarter.com"]

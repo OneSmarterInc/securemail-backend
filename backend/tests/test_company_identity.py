@@ -56,7 +56,7 @@ def test_exception_staff_session_and_sender(staff_client, staff):
 
 
 @pytest.mark.django_db
-def test_notification_uses_staff_profile_not_global(org, sender_profile, settings, staff):
+def test_notification_uses_support_not_global_from(org, sender_profile, settings, staff):
     settings.DEFAULT_FROM_EMAIL = "info@kormic.ai"
     sender_profile["info@kormic.ai"] = {
         **sender_profile["secure@onesmarter.com"],
@@ -72,6 +72,6 @@ def test_notification_uses_staff_profile_not_global(org, sender_profile, setting
     job.refresh_from_db()
     assert job.state == "provider_accepted"
     assert job.payload_ciphertext == ""
-    assert parseaddr(django_mail.outbox[-1].from_email)[1] == staff.email
+    assert parseaddr(django_mail.outbox[-1].from_email)[1] == "support@onesmarter.com"
     assert django_mail.outbox[-1].alternatives
     assert DeliveryJob.objects.count() == 1

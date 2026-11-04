@@ -1,5 +1,7 @@
 # SelfPay and OneSmarter Secure Mail
 
+> Notification sender update (2026-11-05): OTPs, staff/recipient invitations, and protected-message notifications (including SelfPay) send as `OneSmarter Support <support@onesmarter.com>` using backend environment `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` and `EMAIL_USE_SSL`. They do not require personal SMTP credentials or an OrganizationSMTP row. The provider must authorize the configured account to send as support@onesmarter.com. Ordinary Nophi email retains approved personal SMTP credentials. Custody readiness checks remain mandatory. This supersedes earlier owner-credential instructions for notifications.
+
 SelfPay remains independently deployed. It owns the booking and its patient-email verification. Secure Mail owns the shared partner inbox, email OTP sessions, encrypted chat content, replies, search and unread state. There is no shared database, browser authentication cookie, or copy of Secure Mail's chat implementation in SelfPay.
 
 ## Booking handoff

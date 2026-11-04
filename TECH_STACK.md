@@ -1,5 +1,7 @@
 # OneSmarter Secure Mail — Architecture and Tools
 
+> Notification sender update (2026-11-05): OTPs, staff/recipient invitations, and protected-message notifications (including SelfPay) send as `OneSmarter Support <support@onesmarter.com>` using backend environment `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` and `EMAIL_USE_SSL`. They do not require personal SMTP credentials or an OrganizationSMTP row. The provider must authorize the configured account to send as support@onesmarter.com. Ordinary Nophi email retains approved personal SMTP credentials. Custody readiness checks remain mandatory. This supersedes earlier owner-credential instructions for notifications.
+
 > Audit storage decision — 2026-11-04: staff/admin activity logs remain in the same
 > application PostgreSQL database on EC2. External audit archival code is removed; no audit bucket or second automatic
 > audit copy is required. Earlier mandatory S3/Object Lock audit requirements are

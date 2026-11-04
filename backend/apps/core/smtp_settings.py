@@ -110,10 +110,38 @@ def connection(user):
 OTP_SENDER = "support@onesmarter.com"
 
 
+def notification_connection():
+    """System mail uses deployment SMTP credentials, never a staff mailbox."""
+    if not notification_configured():
+        raise SenderUnavailable("Environment notification SMTP is not configured")
+    return OTP_SENDER, SMTPBackend(
+        host=settings.EMAIL_HOST,
+        port=settings.EMAIL_PORT,
+        username=settings.EMAIL_HOST_USER,
+        password=settings.EMAIL_HOST_PASSWORD,
+        use_tls=settings.EMAIL_USE_TLS,
+        use_ssl=settings.EMAIL_USE_SSL,
+        timeout=settings.EMAIL_TIMEOUT,
+        fail_silently=False,
+    )
+
+
+def notification_configured():
+    return bool(
+        settings.EMAIL_HOST
+        and settings.EMAIL_HOST_USER
+        and settings.EMAIL_HOST_PASSWORD
+        and (settings.EMAIL_USE_TLS != settings.EMAIL_USE_SSL)
+        and (
+            (settings.EMAIL_USE_TLS and settings.EMAIL_PORT == 587)
+            or (settings.EMAIL_USE_SSL and settings.EMAIL_PORT == 465)
+        )
+    )
+
+
 def otp_connection(user):
-    # Authenticate as the conversation owner; only the From/envelope sender changes.
-    _, backend = connection(user)
-    return OTP_SENDER, backend
+    # Compatibility for callers; credentials no longer depend on the owner.
+    return notification_connection()
 
 
 def configured(user):
@@ -170,7 +198,7 @@ def state(user):
             "security": transport.security,
             "enabled": transport.enabled,
             "otp_sender": OTP_SENDER,
-            "otp_configured": configured(user),
+            "otp_configured": notification_configured(),
         },
         "personal": {
             "email": personal.email if personal else "",

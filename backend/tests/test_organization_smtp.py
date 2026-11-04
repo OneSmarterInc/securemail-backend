@@ -91,11 +91,13 @@ def test_transport_validation_and_network_boundary(admin_client, monkeypatch):
         smtp_settings.public_socket("smtp.example.com", 587, 1)
 
 
-def test_secure_send_and_otp_use_owners_credentials(staff_client, staff, settings, monkeypatch):
-    OrganizationSMTP.objects.create(organization=staff.organization, host="smtp.example.com")
-    assert personal(staff_client, staff.email).status_code == 200
+def test_secure_notifications_use_environment_credentials(
+    staff_client, staff, settings, monkeypatch
+):
     _, conversation, _, _ = recipient_access(staff_client)
     settings.MAIL_PROVIDER = "smtp"
+    settings.EMAIL_HOST_USER = "support@onesmarter.com"
+    settings.EMAIL_HOST_PASSWORD = "synthetic-environment-secret"
     transport = Mock()
     transport.send_messages.return_value = 1
     factory = Mock(return_value=transport)
@@ -103,15 +105,16 @@ def test_secure_send_and_otp_use_owners_credentials(staff_client, staff, setting
     for job in DeliveryJob.objects.filter(conversation=conversation):
         mail.process_job(job.pk)
     assert factory.called
-    assert factory.call_args.kwargs["username"] == staff.email
-    assert factory.call_args.kwargs["password"] == "mailbox-test-secret"
+    assert factory.call_args.kwargs["username"] == "support@onesmarter.com"
+    assert factory.call_args.kwargs["password"] == "synthetic-environment-secret"
     sent = transport.send_messages.call_args.args[0][0]
-    assert parseaddr(sent.from_email)[1] == staff.email
-    assert sent.reply_to == [staff.email]
+    assert parseaddr(sent.from_email)[1] == "support@onesmarter.com"
+    assert sent.reply_to == ["support@onesmarter.com"]
     assert "Document request" not in sent.body
 
 
-def test_no_environment_sender_fallback(staff_client, settings):
+def test_notification_requires_environment_credentials(staff_client, settings):
+    settings.EMAIL_HOST_PASSWORD = ""
     created = compose(staff_client)
     settings.MAIL_PROVIDER = "smtp"
     job = DeliveryJob.objects.get(conversation_id=created.json()["id"])
@@ -230,6 +233,8 @@ def test_otp_mail_uses_support_mailbox(staff_client, staff, settings, monkeypatc
     token = mail.payload(invite)["link"].rsplit("/", 1)[-1]
     assert post(staff_client, "/recipient/code", {"token": token}).status_code == 200
     otp = DeliveryJob.objects.exclude(pk=invite.pk).get()
+    settings.EMAIL_HOST_USER = "support@onesmarter.com"
+    settings.EMAIL_HOST_PASSWORD = "synthetic-environment-secret"
     settings.MAIL_PROVIDER = "smtp"
     transport = Mock()
     transport.send_messages.return_value = 1
@@ -238,8 +243,8 @@ def test_otp_mail_uses_support_mailbox(staff_client, staff, settings, monkeypatc
     mail.process_job(otp.pk)
     otp.refresh_from_db()
     assert otp.state == "provider_accepted"
-    assert factory.call_args.kwargs["username"] == staff.email
-    assert factory.call_args.kwargs["password"] == "mailbox-test-secret"
+    assert factory.call_args.kwargs["username"] == "support@onesmarter.com"
+    assert factory.call_args.kwargs["password"] == "synthetic-environment-secret"
     assert (
         parseaddr(transport.send_messages.call_args.args[0][0].from_email)[1]
         == "support@onesmarter.com"
@@ -270,20 +275,26 @@ def test_smtp_check_reports_safe_actionable_errors(staff_client, monkeypatch, fa
     transport.close.assert_called_once()
 
 
-def test_otp_requires_owner_credentials_without_support_fallback(staff_client, staff):
-    OrganizationSMTP.objects.create(
-        organization=staff.organization,
-        host="smtp.example.com",
-    )
-    from backend.apps.core.senders import SenderUnavailable
-
-    with pytest.raises(SenderUnavailable):
-        smtp_settings.otp_connection(staff)
-    assert personal(staff_client, staff.email).status_code == 200
+def test_otp_uses_environment_without_personal_credentials(staff, settings):
+    settings.EMAIL_HOST_USER = "support@onesmarter.com"
+    settings.EMAIL_HOST_PASSWORD = "synthetic-environment-secret"
     sender, backend = smtp_settings.otp_connection(staff)
     assert sender == "support@onesmarter.com"
-    assert backend.username == staff.email
-    assert backend.password == "mailbox-test-secret"
+    assert backend.username == "support@onesmarter.com"
+    assert backend.password == "synthetic-environment-secret"
+
+
+@pytest.mark.parametrize(
+    "tls,ssl,port", [(False, False, 587), (True, True, 587), (True, False, 25)]
+)
+def test_notification_rejects_unsafe_transport(settings, tls, ssl, port):
+    from backend.apps.core.senders import SenderUnavailable
+
+    settings.EMAIL_HOST_USER = "support@onesmarter.com"
+    settings.EMAIL_HOST_PASSWORD = "synthetic-environment-secret"
+    settings.EMAIL_USE_TLS, settings.EMAIL_USE_SSL, settings.EMAIL_PORT = tls, ssl, port
+    with pytest.raises(SenderUnavailable):
+        smtp_settings.notification_connection()
 
 
 def test_real_key_store_seal_blocks_smtp_and_otp(staff, settings, tmp_path, monkeypatch):
@@ -342,7 +353,7 @@ def test_real_key_store_seal_blocks_smtp_and_otp(staff, settings, tmp_path, monk
     store.seal("test-custodian")
     factory = Mock()
     monkeypatch.setattr(smtp_settings, "SMTPBackend", factory)
-    for connect in (smtp_settings.connection, smtp_settings.otp_connection):
+    for connect in (smtp_settings.connection,):
         with pytest.raises(crypto.CryptoUnavailable):
             connect(staff)
     factory.assert_not_called()

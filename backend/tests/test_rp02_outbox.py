@@ -69,6 +69,7 @@ def test_rp02_sealed_non_conversation_jobs_retry_without_smtp(staff, settings, m
     connection = Mock(side_effect=AssertionError("SMTP must not be created while sealed"))
     monkeypatch.setattr(mail.smtp_settings, "connection", connection)
     monkeypatch.setattr(mail.smtp_settings, "otp_connection", connection)
+    monkeypatch.setattr(mail.smtp_settings, "notification_connection", connection)
     original_payload = mail.payload
     decrypt = Mock(side_effect=AssertionError("Do not decrypt when readiness is false"))
     monkeypatch.setattr(mail, "payload", decrypt)
