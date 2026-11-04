@@ -1,0 +1,13 @@
+.git
+.venv
+.runtime
+.env
+.env.*
+!.env.example
+**/__pycache__
+frontend/node_modules
+frontend/dist
+frontend/test-results
+.pytest_cache
+.ruff_cache
+*.egg-info

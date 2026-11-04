@@ -1,0 +1,16 @@
+{
+  "secure@onesmarter.com": {
+    "host": "smtp.provider.example",
+    "port": 587,
+    "username": "secure@onesmarter.com",
+    "password_env": "SMTP_PASSWORD_NOTIFICATIONS",
+    "security": "starttls"
+  },
+  "staff@onesmarter.com": {
+    "host": "smtp.provider.example",
+    "port": 587,
+    "username": "staff@onesmarter.com",
+    "password_env": "SMTP_PASSWORD_STAFF",
+    "security": "starttls"
+  }
+}

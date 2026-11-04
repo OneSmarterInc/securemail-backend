@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OneSmarter · Key custody</title><link rel="stylesheet" href="./portal.css"><script defer src="./custodian-qr.js"></script><script defer src="./portal.js"></script></head>
+<body><main>
+<p class="brand">OneSmarter · Restricted maintenance</p>
+<h1>Key custody</h1>
+<p>This page controls the document key service. It does not grant access to conversations.</p>
+<p id="feedback" role="status" aria-live="polite"></p>
+<section id="signin"><h2>Custodian sign in</h2>
+<p>A separate custodian login is required. Staff portal credentials do not apply. The maintenance connection uses a dedicated client certificate, supplied by the browser or the configured maintenance gateway.</p>
+<form id="login"><label for="username">Custodian username</label><input id="username" name="username" autocomplete="username" required maxlength="100">
+<label id="login-password-label" for="password">Password or temporary setup code</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+<div id="enrollment" hidden><h3>Connect your authenticator</h3><p>Scan this QR code with your authenticator. If you cannot scan it, enter the setup key below. Then re-enter your password and confirm the six-digit code.</p><canvas id="totp-qr" aria-label="Authenticator enrollment QR code"></canvas><label for="setup-key">Setup key</label><input id="setup-key" readonly autocomplete="off" spellcheck="false"><p class="hint">Keep this key private. It is shown only before enrollment is confirmed.</p></div>
+<label for="totp-code">Authenticator code</label><input id="totp-code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="6-digit code"><p class="hint">For a new account, leave this blank to set up your authenticator.</p>
+<div id="password-setup" hidden><h3>Choose your password</h3><label for="first-password">New password</label><input id="first-password" type="password" autocomplete="new-password" minlength="16" maxlength="256"><label for="first-password-confirm">Confirm new password</label><input id="first-password-confirm" type="password" autocomplete="new-password" minlength="16" maxlength="256"><p class="hint">Use at least 16 characters. Choose a password different from your temporary setup code.</p></div>
+<button type="submit">Sign in</button></form></section>
+<section id="controls" hidden>
+<p id="signed-in" class="hint"></p><nav class="tabs" role="tablist" aria-label="Custodian workspace"><button id="tab-service" type="button" role="tab" aria-selected="true" aria-controls="service-panel">Key service</button><button id="tab-audit" type="button" role="tab" aria-selected="false" aria-controls="audit-panel" tabindex="-1">Custodian activity</button></nav>
+<section id="service-panel" role="tabpanel" aria-labelledby="tab-service">
+<div class="state"><h2>Service status</h2><strong id="state">Checking…</strong></div>
+<p id="root-version"></p><p>Documents remain encrypted in storage. Unsealing permits authorized key operations; restarting the service seals it again.</p>
+<form id="unseal"><label for="recovery">Recovery key</label><input id="recovery" type="password" autocomplete="off" spellcheck="false" required maxlength="44" minlength="44">
+<p class="hint">Enter the separately stored Base64 recovery key. It is used temporarily, never saved in browser storage or sent to application logs.</p>
+<div id="override-controls" hidden><label class="check"><input id="override-enable" type="checkbox"> Authorize a temporary checkpoint-outage override</label>
+<label for="override-reason">Reason (at least 20 characters; no passwords or document contents)</label><textarea id="override-reason" minlength="20" maxlength="500" disabled></textarea>
+<p class="hint">This does not bypass invalid signatures. Integrity stays unverified and document sending stays disabled until the checkpoint is exported. Sealing ends the override.</p></div>
+<button type="submit">Unseal key service</button></form>
+<form id="seal"><label class="check"><input id="seal-confirm" type="checkbox" required> I understand document operations will become unavailable until another unseal.</label><button class="danger" type="submit">Seal key service</button></form>
+<details><summary>Rotate root protection</summary><p>Take and verify an encrypted key-store backup first. Keep its old recovery key separately: an old backup still needs the old key. This operation does not re-encrypt documents.</p>
+<form id="rotate"><label for="new-secret">New randomly generated recovery key</label><input id="new-secret" type="password" autocomplete="off" required minlength="44" maxlength="44">
+<label for="confirm-secret">Confirm new recovery key</label><input id="confirm-secret" type="password" autocomplete="off" required minlength="44" maxlength="44">
+<label class="check"><input id="backup-confirm" type="checkbox" required> I have verified the backup and separately saved the new recovery key.</label><button type="submit">Rotate root protection</button></form></details>
+<details id="candidate-restore" hidden><summary>Restore a sealed recovery copy</summary><p>Creates a new sealed copy in the operator-configured recovery directory. It does not replace the running store. Independent backup and clean-machine evidence are still required before retiring old-root snapshots.</p>
+<form id="restore"><label for="restore-secret">Recovery key for this store</label><input id="restore-secret" type="password" autocomplete="off" minlength="44" maxlength="44" required>
+<label class="check"><input id="restore-override" type="checkbox"> Authorize restore while the checkpoint receiver is unavailable</label><label for="restore-reason">Override reason (at least 20 characters; no secrets)</label><textarea id="restore-reason" minlength="20" maxlength="500" disabled></textarea><button type="submit">Create sealed recovery copy</button></form></details>
+</section>
+<section id="audit-panel" role="tabpanel" aria-labelledby="tab-audit" hidden><header class="audit-heading"><div><h2>Custodian activity</h2><p class="hint">Account and key-service actions, attributed to individual custodians.</p></div><button id="audit-refresh" class="secondary" type="button">Refresh</button></header>
+<form id="audit-filters" class="audit-filters"><div class="search-field"><label for="audit-query">Search activity</label><input id="audit-query" type="search" maxlength="100" placeholder="Custodian, action or account"></div><div><label for="audit-actor">Custodian</label><select id="audit-actor"><option value="">All custodians</option></select></div><div><label for="audit-operation">Action</label><select id="audit-operation"><option value="">All actions</option></select></div><div><label for="audit-from">From</label><input id="audit-from" type="date"></div><div><label for="audit-to">To</label><input id="audit-to" type="date"></div><button type="submit">Apply filters</button><button id="audit-clear" class="secondary" type="button">Clear</button></form>
+<p id="audit-summary" class="hint" role="status" aria-live="polite"></p><div class="table-scroll" tabindex="0" role="region" aria-label="Custodian activity table"><table><caption class="sr-only">Custodian audit events</caption><thead><tr><th scope="col" aria-sort="descending"><button type="button" data-sort="at">Time <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button></th><th scope="col" aria-sort="none"><button type="button" data-sort="actor">Custodian <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button></th><th scope="col" aria-sort="none"><button type="button" data-sort="operation">Action <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button></th><th scope="col">Account / source</th></tr></thead><tbody id="audit-rows"></tbody></table></div><div class="pagination"><button id="audit-prev" class="secondary" type="button">Previous</button><span id="audit-page"></span><button id="audit-next" class="secondary" type="button">Next</button></div></section>
+<footer><button id="logout" class="secondary" type="button">Sign out of maintenance</button><p class="hint">Signing out does not seal the running service. Maintenance sessions expire after five minutes.</p></footer>
+</section></main></body></html>

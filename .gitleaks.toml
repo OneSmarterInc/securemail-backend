@@ -1,0 +1,18 @@
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+  [[rules.allowlists]]
+  description = "ORM query enum and null argument, not a credential"
+  condition = "AND"
+  paths = ['''^backend/tests/test_(security_hygiene|v2_remediation)\.py$''']
+  regexTarget = "line"
+  regexes = ['''user=staff, purpose="password_recovery", consumed_at=None''']
+
+  [[rules.allowlists]]
+  description = "Public deterministic envelope known-answer vector outputs only"
+  condition = "AND"
+  paths = ['''^backend/tests/vectors/envelope_v2\.json$''']
+  regexTarget = "line"
+  regexes = ['''"(expected_wrap_key_hex|key|auth)": "[A-Za-z0-9_+/=-]+"''']

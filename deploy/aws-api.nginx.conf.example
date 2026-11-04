@@ -1,0 +1,36 @@
+# Include from nginx's http context. Replace securemailbackend.onesmarter.com and certificate paths.
+# Requires nginx linked to OpenSSL >=3.5, verified X25519MLKEM768 support.
+# Direct EC2 ingress: if a load balancer is added, re-review trust and PQ evidence.
+server {
+    listen 443 ssl;
+    server_name securemailbackend.onesmarter.com;
+    if ($ssl_server_name != "securemailbackend.onesmarter.com") { return 421; }
+    ssl_certificate /etc/onesmarter/pki/api-fullchain.pem;
+    ssl_certificate_key /etc/onesmarter/pki/api.key;
+    ssl_protocols TLSv1.3;
+    ssl_ecdh_curve X25519MLKEM768;
+    ssl_session_tickets off;
+    ssl_session_cache off;
+    ssl_early_data off;
+    client_max_body_size 27m;
+    access_log off;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header X-Frame-Options DENY always;
+    add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'" always;
+    location ~ ^/(api|recipient-api)/ {
+        proxy_pass http://unix:/run/onesmarter/app.sock:;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_max_temp_file_size 0;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For "";
+        proxy_set_header Forwarded "";
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 90s;
+    }
+    location / { return 404; }
+}

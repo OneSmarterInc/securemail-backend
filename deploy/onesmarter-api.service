@@ -1,0 +1,28 @@
+[Unit]
+Description=OneSmarter Secure Mail API (release gates remain enforced)
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/onesmarter
+
+[Service]
+Type=simple
+User=onesmarter
+Group=onesmarter
+WorkingDirectory=/opt/onesmarter/current
+EnvironmentFile=/etc/onesmarter/backend.env
+Environment=DJANGO_READ_DOT_ENV=false
+RuntimeDirectory=onesmarter
+RuntimeDirectoryMode=0750
+UMask=0007
+ExecStart=/opt/onesmarter/venv/bin/gunicorn backend.config.wsgi:application --bind unix:/run/onesmarter/app.sock --umask 007 --workers 2 --timeout 90 --error-logfile -
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/onesmarter /run/onesmarter
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,4 @@
+# Test-only independent implementations. Never install into the key-service image.
+# kyber-py is educational/non-constant-time: synthetic interoperability only.
+pycryptodomex==3.24.1
+kyber-py==1.2.0

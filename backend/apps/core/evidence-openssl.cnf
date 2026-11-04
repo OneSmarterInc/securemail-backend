@@ -1,0 +1,5 @@
+# Deliberately minimal configuration for RFC 3161 client operations.
+# Trust is supplied explicitly through EVIDENCE_TSA_CA_FILE, never this file.
+openssl_conf = openssl_init
+
+[openssl_init]

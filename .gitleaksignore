@@ -1,0 +1,5 @@
+# Confirmed false positives: Django query keyword consumed_at=None after
+# purpose="password_recovery"; no credential value. Exact historical findings only.
+8741a72a80d7adcce4534c66c8cb0f2e4c4e9ca9:backend/tests/test_security_hygiene.py:generic-api-key:126
+4e7709e27b3df1637415063c42585a3744ef0c88:backend/tests/test_v2_remediation.py:generic-api-key:278
+c78838f5370c92c5dbf501b4e67b37b98f3a53f7:CI_REMEDIATION.md:generic-api-key:9
