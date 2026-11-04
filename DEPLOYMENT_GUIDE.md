@@ -2,7 +2,7 @@
 
 **Installation sequence:** use [AWS_FROM_SCRATCH.md](AWS_FROM_SCRATCH.md) for the current native AWS commands. The detailed sections below are reference material; do not mix their historical paths with the current procedure.
 
-**Current account model:** all four Secure Mail processes use `onesmarter`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
+**Current account model:** all four Secure Mail processes use `ubuntu`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
 
 
 Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
@@ -129,9 +129,8 @@ Create a dedicated OS account and directories. The following assumes the data
 filesystem is already mounted and verified; do not format an existing volume:
 
 ```sh
-sudo useradd --system --home /var/lib/onesmarter --shell /usr/sbin/nologin onesmarter
-sudo install -d -o root -g onesmarter -m 0750 /opt/onesmarter /etc/onesmarter
-sudo install -d -o onesmarter -g onesmarter -m 0700 /var/lib/onesmarter/runtime
+sudo install -d -o root -g ubuntu -m 0750 /opt/onesmarter /etc/onesmarter
+sudo install -d -o ubuntu -g ubuntu -m 0700 /var/lib/onesmarter/runtime
 sudo usermod -a -G onesmarter www-data
 ```
 

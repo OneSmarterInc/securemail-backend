@@ -2,7 +2,7 @@
 
 **Installation sequence:** use [AWS_FROM_SCRATCH.md](AWS_FROM_SCRATCH.md) for the current native AWS commands. The detailed sections below are reference material; do not mix their historical paths with the current procedure.
 
-**Current account model:** all four Secure Mail processes use `onesmarter`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
+**Current account model:** all four Secure Mail processes use `ubuntu`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
 
 
 Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
@@ -96,15 +96,14 @@ already exist. The data filesystem must already be mounted; this guide never
 formats a volume.
 
 ```bash
-sudo useradd --system --home /var/lib/onesmarter --shell /usr/sbin/nologin onesmarter
 ```
 
 ```bash
-sudo install -d -o root -g onesmarter -m 0750 /etc/onesmarter
+sudo install -d -o root -g ubuntu -m 0750 /etc/onesmarter
 ```
 
 ```bash
-sudo install -d -o onesmarter -g onesmarter -m 0700 /var/lib/onesmarter/runtime
+sudo install -d -o ubuntu -g ubuntu -m 0700 /var/lib/onesmarter/runtime
 ```
 
 The existing API systemd template uses a group-accessible Unix socket. Grant the
@@ -122,11 +121,11 @@ The current policy CLI writes atomically as the key-service identity. Give that
 authorized identity a private configuration directory for this procedure:
 
 ```bash
-sudo install -d -o onesmarter -g onesmarter -m 0700 /etc/onesmarter-key
+sudo install -d -o ubuntu -g ubuntu -m 0700 /etc/onesmarter-key
 ```
 
 ```bash
-sudo install -d -o onesmarter -g onesmarter -m 0700 /var/lib/onesmarter-key /var/lib/onesmarter-key/accounts
+sudo install -d -o ubuntu -g ubuntu -m 0700 /var/lib/onesmarter-key /var/lib/onesmarter-key/accounts
 ```
 
 Use persistent EBS storage with deletion on termination disabled where required.
@@ -411,7 +410,7 @@ loads it without evaluating it as shell code. **AFTER APPROVAL**, on the correct
 host, adjust the three paths and final management command:
 
 ```bash
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python - /etc/onesmarter/backend.env /var/www/securemail-backend/current migrate --plan <<'PY'
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python - /etc/onesmarter/backend.env /var/www/securemail-backend/current migrate --plan <<'PY'
 import os
 import sys
 from pathlib import Path
@@ -483,7 +482,7 @@ substitute for these random bytes.
 
 ```bash
 cd /var/www/securemail-backend/current
-sudo -u onesmarter env APP_ENV=production /var/www/securemail-backend/venv/bin/python -m backend.keyservice init --store /var/lib/onesmarter-key/store.sqlite3
+sudo -u ubuntu env APP_ENV=production /var/www/securemail-backend/venv/bin/python -m backend.keyservice init --store /var/lib/onesmarter-key/store.sqlite3
 ```
 
 It prompts, with input hidden:
@@ -511,12 +510,12 @@ ready.
 Export the initial checkpoint while you control the newly initialized store:
 
 ```bash
-sudo -u onesmarter env APP_ENV=production \
+sudo -u ubuntu env APP_ENV=production \
   /var/www/securemail-backend/venv/bin/python -m backend.keyservice checkpoint \
   --store /var/lib/onesmarter-key/store.sqlite3 \
   --destination /var/lib/onesmarter-key/initial-checkpoint.json
-sudo install -d -o root -g onesmarter -m 0750 /etc/onesmarter-trust
-sudo install -o root -g onesmarter -m 0640 \
+sudo install -d -o root -g ubuntu -m 0750 /etc/onesmarter-trust
+sudo install -o root -g ubuntu -m 0640 \
   /var/lib/onesmarter-key/initial-checkpoint.json \
   /etc/onesmarter-trust/checkpoint.json
 ```
@@ -536,19 +535,19 @@ registration; the client private keys stay on their respective hosts.
 Custody gateway registration, using current CLI syntax:
 
 ```bash
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/gateway-client.pem --name custody-gateway --role custodian --days 30
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/gateway-client.pem --name custody-gateway --role custodian --days 30
 ```
 
 Workload registration, after determining the real organization UUID:
 
 ```bash
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/workload-client.pem --name application-workload --role workload --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/workload-client.pem --name application-workload --role workload --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
 ```
 
 Register a distinct rotation identity:
 
 ```bash
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/rotation-client.pem --name offline-key-maintenance --role maintenance --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/rotation-client.pem --name offline-key-maintenance --role maintenance --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
 ```
 
 The policy directory must permit the authorized identity command's atomic writes.

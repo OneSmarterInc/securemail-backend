@@ -2,7 +2,7 @@
 
 **Installation sequence:** use [AWS_FROM_SCRATCH.md](AWS_FROM_SCRATCH.md) for the current native AWS commands. The detailed sections below are reference material; do not mix their historical paths with the current procedure.
 
-**Current account model:** all four Secure Mail processes use `onesmarter`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
+**Current account model:** all four Secure Mail processes use `ubuntu`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
 
 
 Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
@@ -32,7 +32,7 @@ or 6379. PostgreSQL/Redis must listen only locally in this arrangement.
 ## 2. Install accounts, directories and locked runtimes
 
 Follow sections 7–9 of COMPLETE_DEPLOYMENT_GUIDE.md on this ONE instance. Create
-one `onesmarter` system user for all four application services. Keep app data under
+one `ubuntu` system user for all four application services. Keep app data under
 `/var/lib/onesmarter` and key data/accounts under `/var/lib/onesmarter-key`.
 The shared UID can access the store, server private key and custodian credential
 files. Keep recovery secrets off-host; this model removes separate-user isolation.

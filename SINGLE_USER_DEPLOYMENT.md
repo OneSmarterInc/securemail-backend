@@ -1,6 +1,6 @@
-# Switch an existing AWS install to one Secure Mail service user
+# Switch an existing AWS install to the existing ubuntu account
 
-All four application services run as `onesmarter`: API, key service, Celery worker
+All four application services run as `ubuntu`: API, key service, Celery worker
 and scheduler. PostgreSQL, Redis and nginx keep their vendor service accounts.
 The separate processes, mTLS checks and manual custodian unseal remain. Sharing a
 UID removes the OS-user boundary between application and key-store files; a
@@ -46,19 +46,21 @@ Review any mounted backup volume and its ownership policy before running it.
 
 ```bash
 sudo bash -eu <<'SH'
-id onesmarter
-for path in /etc/onesmarter-key /var/lib/onesmarter-key; do
+id ubuntu
+for path in /etc/onesmarter /var/lib/onesmarter /etc/onesmarter-key /var/lib/onesmarter-key; do
   test -d "$path"
   test ! -L "$path"
   readlink -f "$path"
 done
-chown -R --no-dereference onesmarter:onesmarter /etc/onesmarter-key /var/lib/onesmarter-key
+chown -R --no-dereference ubuntu:ubuntu /etc/onesmarter /var/lib/onesmarter /etc/onesmarter-key /var/lib/onesmarter-key
+chown root:ubuntu /etc/onesmarter/backend.env
+chmod 0640 /etc/onesmarter/backend.env
 chmod 0700 /etc/onesmarter-key /var/lib/onesmarter-key
 if [ -f /etc/onesmarter-key/service.env ]; then
   chmod 0600 /etc/onesmarter-key/service.env
 fi
 if [ -f /etc/onesmarter-trust/checkpoint.json ]; then
-  chown root:onesmarter /etc/onesmarter-trust /etc/onesmarter-trust/checkpoint.json
+  chown root:ubuntu /etc/onesmarter-trust /etc/onesmarter-trust/checkpoint.json
   chmod 0750 /etc/onesmarter-trust
   chmod 0640 /etc/onesmarter-trust/checkpoint.json
 fi
@@ -77,7 +79,8 @@ pg_lsclusters
 systemctl list-unit-files '*nginx*' 'redis*'
 ```
 
-Remove stale `User=onesmarter-key` / `Group=onesmarter-key` overrides using
+Replace stale `User=onesmarter` or `User=onesmarter-key` overrides with
+`User=ubuntu`, and old application groups with `Group=ubuntu` using
 `sudoedit` on the specific override file shown. Preserve the API's dedicated
 `onesmarter-web` socket group if configured. The installer rejects stale account
 overrides and old `/opt/onesmarter` paths. Use the actual PostgreSQL cluster name
@@ -90,7 +93,7 @@ sudo /var/www/securemail-backend/venv/bin/python scripts/install_systemd_stack.p
 systemctl show onesmarter-api onesmarter-worker onesmarter-beat onesmarter-keyservice --property=Id,User,Group
 ```
 
-Every `User` must be `onesmarter`. The API may use `Group=onesmarter-web` for
+Every `User` must be `ubuntu`. The API may use `Group=onesmarter-web` for
 nginx socket access; this does not change its user. Do not change existing secrets.
 
 ## 5. Validate configuration, then start and unseal

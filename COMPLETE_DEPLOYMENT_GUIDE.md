@@ -2,7 +2,7 @@
 
 **Installation sequence:** use [AWS_FROM_SCRATCH.md](AWS_FROM_SCRATCH.md) for the current native AWS commands. The detailed sections below are reference material; do not mix their historical paths with the current procedure.
 
-**Current account model:** all four Secure Mail processes use `onesmarter`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
+**Current account model:** all four Secure Mail processes use `ubuntu`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
 
 
 Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
@@ -91,7 +91,7 @@ This is a proposed layout, not a record of provisioned resources:
 |---|---|
 | Vercel project | React application only |
 | AWS application EC2 host | API nginx, Gunicorn, worker, beat; initially private local PostgreSQL/Redis if that operating model is approved |
-| Same EC2, shared `onesmarter` OS user | Key service on `127.0.0.1:8443` and its custodian account store |
+| Same EC2, shared `ubuntu` OS user | Key service on `127.0.0.1:8443` and its custodian account store |
 | Restricted gateway | May run as a separate nginx service on the application host; separate certificate and permissions |
 | Separate administration/backup account or host | Checkpoint receiver and off-host backup copies |
 
@@ -231,15 +231,14 @@ already exist. The data filesystem must already be mounted; this guide never
 formats a volume.
 
 ```bash
-sudo useradd --system --home /var/lib/onesmarter --shell /usr/sbin/nologin onesmarter
 ```
 
 ```bash
-sudo install -d -o root -g onesmarter -m 0750 /opt/onesmarter /opt/onesmarter/releases /etc/onesmarter
+sudo install -d -o root -g ubuntu -m 0750 /opt/onesmarter /opt/onesmarter/releases /etc/onesmarter
 ```
 
 ```bash
-sudo install -d -o onesmarter -g onesmarter -m 0700 /var/lib/onesmarter/runtime
+sudo install -d -o ubuntu -g ubuntu -m 0700 /var/lib/onesmarter/runtime
 ```
 
 The existing API systemd template uses a group-accessible Unix socket. Grant the
@@ -252,18 +251,18 @@ membership. Do not grant it access to the key host's credential directories.
 ```
 
 ```bash
-sudo install -d -o root -g onesmarter -m 0750 /opt/onesmarter-key /opt/onesmarter-key/releases
+sudo install -d -o root -g ubuntu -m 0750 /opt/onesmarter-key /opt/onesmarter-key/releases
 ```
 
 The current policy CLI writes atomically as the key-service identity. Give that
 authorized identity a private configuration directory for this procedure:
 
 ```bash
-sudo install -d -o onesmarter -g onesmarter -m 0700 /etc/onesmarter-key
+sudo install -d -o ubuntu -g ubuntu -m 0700 /etc/onesmarter-key
 ```
 
 ```bash
-sudo install -d -o onesmarter -g onesmarter -m 0700 /var/lib/onesmarter-key /var/lib/onesmarter-key/accounts
+sudo install -d -o ubuntu -g ubuntu -m 0700 /var/lib/onesmarter-key /var/lib/onesmarter-key/accounts
 ```
 
 Use persistent EBS storage with deletion on termination disabled where required.
@@ -396,7 +395,7 @@ substitute for these random bytes.
 
 ```bash
 cd /opt/onesmarter-key/current
-sudo -u onesmarter /opt/onesmarter-key/venv/bin/python -m backend.keyservice init --store /var/lib/onesmarter-key/store.sqlite3
+sudo -u ubuntu /opt/onesmarter-key/venv/bin/python -m backend.keyservice init --store /var/lib/onesmarter-key/store.sqlite3
 ```
 
 It prompts, with input hidden:
@@ -431,19 +430,19 @@ registration; the client private keys stay on their respective hosts.
 Custody gateway registration, using current CLI syntax:
 
 ```bash
-sudo -u onesmarter /opt/onesmarter-key/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/gateway-client.pem --name custody-gateway --role custodian --days 30
+sudo -u ubuntu /opt/onesmarter-key/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/gateway-client.pem --name custody-gateway --role custodian --days 30
 ```
 
 Workload registration, after determining the real organization UUID:
 
 ```bash
-sudo -u onesmarter /opt/onesmarter-key/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/workload-client.pem --name application-workload --role workload --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
+sudo -u ubuntu /opt/onesmarter-key/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/workload-client.pem --name application-workload --role workload --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
 ```
 
 Register a distinct rotation identity:
 
 ```bash
-sudo -u onesmarter /opt/onesmarter-key/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/rotation-client.pem --name offline-key-maintenance --role maintenance --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
+sudo -u ubuntu /opt/onesmarter-key/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/rotation-client.pem --name offline-key-maintenance --role maintenance --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
 ```
 
 The policy directory must permit the authorized identity command's atomic writes.
@@ -531,7 +530,7 @@ loads it without evaluating it as shell code. **AFTER APPROVAL**, on the correct
 host, adjust the three paths and final management command:
 
 ```bash
-sudo -u onesmarter /opt/onesmarter/venv/bin/python - /etc/onesmarter/backend.env /opt/onesmarter/current migrate --plan <<'PY'
+sudo -u ubuntu /opt/onesmarter/venv/bin/python - /etc/onesmarter/backend.env /opt/onesmarter/current migrate --plan <<'PY'
 import os
 import sys
 from pathlib import Path

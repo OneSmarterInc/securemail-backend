@@ -51,10 +51,14 @@ def validate_override(content: str) -> None:
         raise ValueError("Update old /opt paths in existing override first")
     for line in content.splitlines():
         name, separator, value = line.strip().partition("=")
-        if separator and name.strip() == "User" and value.strip() != "onesmarter":
-            raise ValueError("All Secure Mail services must use User=onesmarter")
-        if separator and name.strip() == "Group" and value.strip() == "onesmarter-key":
-            raise ValueError("Replace the old onesmarter-key service group")
+        if separator and name.strip() == "User" and value.strip() != "ubuntu":
+            raise ValueError("All Secure Mail services must use User=ubuntu")
+        if (
+            separator
+            and name.strip() == "Group"
+            and value.strip() in {"onesmarter", "onesmarter-key"}
+        ):
+            raise ValueError("Replace the old application service group with ubuntu")
 
 
 def main() -> None:

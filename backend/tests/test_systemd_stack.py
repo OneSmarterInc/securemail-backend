@@ -11,7 +11,13 @@ from scripts.install_systemd_stack import UNITS, files_for, unit_name, validate_
 
 @pytest.mark.parametrize(
     "content",
-    ["[Service]\nUser=onesmarter-key", "User=root", "User=", "Group=onesmarter-key"],
+    [
+        "[Service]\nUser=onesmarter-key",
+        "User=root",
+        "User=onesmarter",
+        "User=",
+        "Group=onesmarter-key",
+    ],
 )
 def test_rejects_stale_or_privileged_service_account_overrides(content):
     with pytest.raises(ValueError):
@@ -19,7 +25,7 @@ def test_rejects_stale_or_privileged_service_account_overrides(content):
 
 
 def test_allows_nginx_socket_group_without_changing_service_user():
-    validate_override("[Service]\nUser=onesmarter\nGroup=onesmarter-web\n")
+    validate_override("[Service]\nUser=ubuntu\nGroup=onesmarter-web\n")
 
 
 @pytest.mark.parametrize(
@@ -41,11 +47,11 @@ def test_native_stack_uses_one_account_and_preserves_custodian_unseal():
         assert "/var/www/securemail-backend/venv/bin/" in unit
         assert "/opt/onesmarter" not in unit
         assert "Type=exec" in unit
-        assert "User=onesmarter\n" in unit
-        assert "Group=onesmarter\n" in unit
+        assert "User=ubuntu\n" in unit
+        assert "Group=ubuntu\n" in unit
     key = files["onesmarter-keyservice.service"]
-    assert "User=onesmarter\n" in key
-    assert "Group=onesmarter\n" in key
+    assert "User=ubuntu\n" in key
+    assert "Group=ubuntu\n" in key
     assert "--host 127.0.0.1" in key
     assert "--trusted-checkpoint" in key
     assert "--synthetic-only" not in key
@@ -60,7 +66,7 @@ def test_native_stack_uses_one_account_and_preserves_custodian_unseal():
         dependencies = files[f"{name}.d/10-local-services.conf"]
         assert "Requires=postgresql@17-main.service redis-server.service" in dependencies
         assert "After=postgresql@17-main.service redis-server.service" in dependencies
-        assert "User=onesmarter\n" in files[name]
+        assert "User=ubuntu\n" in files[name]
 
 
 @pytest.mark.skipif(not shutil.which("systemd-analyze"), reason="Linux systemd tooling required")

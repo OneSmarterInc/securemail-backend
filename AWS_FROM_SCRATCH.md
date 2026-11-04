@@ -1,18 +1,23 @@
-# Secure Mail: AWS installation from scratch
+# Secure Mail: complete setup on your existing Ubuntu EC2
 
-**Current account model:** all four Secure Mail processes use `onesmarter`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
+**Current account model:** all four Secure Mail processes use `ubuntu`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
 
 
 Updated 4 November 2026. One Ubuntu EC2, native systemd, PostgreSQL on EC2, no
-Docker, one Secure Mail service account, one startup target and manual custodian unseal.
+Docker, the existing ubuntu account for all four application services, one startup target and manual custodian unseal.
 Frontend hosting is outside this AWS-only guide.
+
+`onesmarter` in directory or service names is a product label, not a Linux account.
+You run the setup from your existing `ubuntu` login; all four application units use
+`User=ubuntu`. Package-managed PostgreSQL, Redis and nginx retain their normal
+accounts. Custodian identities are application logins, not additional Linux users.
 
 ## Read this sequence first
 
 | Order | What you prepare | Completion check |
 |---|---|---|
-| 1–3 | EC2, network, storage, native OpenSSL/Python/nginx | Verified runtime installed |
-| 4–5 | One application account, source, venv, fresh secrets | Source readable; secrets private |
+| 1–3 | Existing EC2, network, storage, native OpenSSL/Python/nginx | Verified runtime installed |
+| 4–5 | Existing ubuntu account, source, venv, fresh secrets | Source readable; secrets private |
 | 6 | Local PostgreSQL, Redis, keys.internal hosts entry | Database login succeeds |
 | 7–9 | Service keys, off-host CA signing, installed certificates | Server and client certificates verify |
 | 10–11 | Backend environment, management helper, database migrations | Django production checks pass |
@@ -29,7 +34,7 @@ Commands with `REPLACE_WITH_...` need your actual value before execution. Source
 archive hashes, AWS region, retention, operator CIDR and provider credentials
 cannot be truthfully prefilled. Run blocks in order and stop on errors.
 
-**Fresh installation:** follow every numbered section in order on the new host.
+**New application installation on an existing EC2:** follow the sections in order.
 If a supposedly fresh path already contains data or keys, stop and investigate;
 never delete a store or database to repeat initialization. Stop on command errors.
 
@@ -41,12 +46,11 @@ Production startup is supported, but independent crypto review and live recovery
 evidence remain pending. See PRODUCTION_STARTUP.md for the legacy checkpoint's
 limitations. This guide is not a claim that AWS has been deployed or approved.
 
-## 1. Create the EC2 host
+## 1. Connect to your existing EC2 and verify its network
 
-In AWS, select the approved region and Ubuntu 24.04 LTS image. Choose adequate
-RAM/disk for PostgreSQL, the application and native compilation; a tiny instance
-is not capacity-certified. Use persistent storage and preserve required data
-volumes on termination. Verify mounts before writing application/database data.
+Use your existing Ubuntu EC2 instance and log in as `ubuntu`. Do not create another
+instance or any `onesmarter` / `onesmarter-key` Linux account. Confirm persistent
+storage capacity and the approved region; keep existing data if any is present.
 
 Allow inbound HTTPS 443, and SSH 22 only from your operator IP/network (or use
 your existing Session Manager access). Do not expose 5432, 6379 or 8443.
@@ -180,20 +184,20 @@ Sources: [Python releases](https://www.python.org/downloads/),
 [nginx build options](https://nginx.org/en/docs/configure.html),
 [OpenSSL source releases](https://openssl-library.org/source/).
 
-## 4. Create accounts and directories
+## 4. Use your existing ubuntu account and create directories
 
-Skip existing accounts; the following creates only missing ones:
+Verify your existing account, then create application directories. No user is created:
 
 ```bash
-id onesmarter || sudo useradd --system --user-group --home-dir /var/lib/onesmarter --shell /usr/sbin/nologin onesmarter
+id ubuntu
 sudo install -d -o root -g root -m 0755 /var/www/securemail-backend /var/www/securemail-backend/releases
-sudo install -d -o root -g onesmarter -m 0750 /etc/onesmarter /etc/onesmarter/pki /var/lib/onesmarter
-sudo install -d -o onesmarter -g onesmarter -m 0700 /var/lib/onesmarter/runtime
-sudo install -d -o onesmarter -g onesmarter -m 0700 /etc/onesmarter-key /etc/onesmarter-key/pki /var/lib/onesmarter-key /var/lib/onesmarter-key/accounts /var/lib/onesmarter-key/backups
+sudo install -d -o root -g ubuntu -m 0750 /etc/onesmarter /etc/onesmarter/pki /var/lib/onesmarter
+sudo install -d -o ubuntu -g ubuntu -m 0700 /var/lib/onesmarter/runtime
+sudo install -d -o ubuntu -g ubuntu -m 0700 /etc/onesmarter-key /etc/onesmarter-key/pki /var/lib/onesmarter-key /var/lib/onesmarter-key/accounts /var/lib/onesmarter-key/backups
 sudo install -d -o root -g root -m 0700 /etc/onesmarter-gateway /etc/onesmarter-gateway/pki /etc/onesmarter-rotation
 ```
 
-The shared service user can read the executable source/runtime but must not modify it.
+The existing ubuntu user can read the executable source/runtime but must not modify it.
 It can access both application and key-service data; separate paths are organizational,
 not an OS-user security boundary. No unseal secret or CA signing key
 belongs in these server directories.
@@ -255,7 +259,7 @@ with os.fdopen(fd, 'w') as stream:
     stream.write('\n'.join(lines) + '\n')
     stream.flush()
     os.fsync(stream.fileno())
-os.chown(destination, 0, grp.getgrnam('onesmarter').gr_gid)
+os.chown(destination, 0, grp.getgrnam('ubuntu').gr_gid)
 os.chmod(destination, 0o640)
 print('Created backend.env; complete the provider and archive settings privately.')
 PY
@@ -348,8 +352,8 @@ make_request() {
   chmod 0600 "$dir/$name.key" "$dir/$name.csr"
   "$openssl" req -in "$dir/$name.csr" -noout -verify -subject
 }
-make_request /etc/onesmarter/pki workload securemail-workload clientAuth onesmarter:onesmarter
-make_request /etc/onesmarter-key/pki server keys.internal serverAuth onesmarter:onesmarter
+make_request /etc/onesmarter/pki workload securemail-workload clientAuth ubuntu:ubuntu
+make_request /etc/onesmarter-key/pki server keys.internal serverAuth ubuntu:ubuntu
 make_request /etc/onesmarter-gateway/pki gateway custody-gateway clientAuth root:root
 make_request /etc/onesmarter-rotation rotation offline-key-maintenance clientAuth root:root
 SH
@@ -419,16 +423,16 @@ an operator-owned `$HOME/issued-certificates` directory. Never transfer ca.key.
 ## 9. Install certificates on EC2
 
 ```bash
-sudo install -o root -g onesmarter -m 0640 "$HOME/issued-certificates/key-service-ca.pem" /etc/onesmarter/pki/key-service-ca.pem
-sudo install -o onesmarter -g onesmarter -m 0640 "$HOME/issued-certificates/workload.pem" /etc/onesmarter/pki/workload.pem
-sudo install -o onesmarter -g onesmarter -m 0600 "$HOME/issued-certificates/key-service-ca.pem" /etc/onesmarter-key/pki/ca.pem
-sudo install -o onesmarter -g onesmarter -m 0600 "$HOME/issued-certificates/server.pem" /etc/onesmarter-key/pki/server.pem
+sudo install -o root -g ubuntu -m 0640 "$HOME/issued-certificates/key-service-ca.pem" /etc/onesmarter/pki/key-service-ca.pem
+sudo install -o ubuntu -g ubuntu -m 0640 "$HOME/issued-certificates/workload.pem" /etc/onesmarter/pki/workload.pem
+sudo install -o ubuntu -g ubuntu -m 0600 "$HOME/issued-certificates/key-service-ca.pem" /etc/onesmarter-key/pki/ca.pem
+sudo install -o ubuntu -g ubuntu -m 0600 "$HOME/issued-certificates/server.pem" /etc/onesmarter-key/pki/server.pem
 sudo install -o root -g root -m 0600 "$HOME/issued-certificates/key-service-ca.pem" /etc/onesmarter-gateway/pki/ca.pem
 sudo install -o root -g root -m 0600 "$HOME/issued-certificates/gateway.pem" /etc/onesmarter-gateway/pki/gateway.pem
 sudo install -o root -g root -m 0600 "$HOME/issued-certificates/rotation.pem" /etc/onesmarter-rotation/rotation.pem
-sudo install -o onesmarter -g onesmarter -m 0600 "$HOME/issued-certificates/workload.pem" /etc/onesmarter-key/pki/workload-client.pem
-sudo install -o onesmarter -g onesmarter -m 0600 "$HOME/issued-certificates/gateway.pem" /etc/onesmarter-key/pki/gateway-client.pem
-sudo install -o onesmarter -g onesmarter -m 0600 "$HOME/issued-certificates/rotation.pem" /etc/onesmarter-key/pki/rotation-client.pem
+sudo install -o ubuntu -g ubuntu -m 0600 "$HOME/issued-certificates/workload.pem" /etc/onesmarter-key/pki/workload-client.pem
+sudo install -o ubuntu -g ubuntu -m 0600 "$HOME/issued-certificates/gateway.pem" /etc/onesmarter-key/pki/gateway-client.pem
+sudo install -o ubuntu -g ubuntu -m 0600 "$HOME/issued-certificates/rotation.pem" /etc/onesmarter-key/pki/rotation-client.pem
 ```
 
 These are internal identity certificates, not browser-trusted public HTTPS certificates.
@@ -439,7 +443,7 @@ Use your prepared backend.env; do not regenerate secrets on an existing install.
 
 ```bash
 sudoedit /etc/onesmarter/backend.env
-sudo chown root:onesmarter /etc/onesmarter/backend.env
+sudo chown root:ubuntu /etc/onesmarter/backend.env
 sudo chmod 0640 /etc/onesmarter/backend.env
 ```
 
@@ -506,7 +510,7 @@ PY
 sudo chmod 0644 /usr/local/lib/securemail-manage.py
 sudo tee /usr/local/bin/securemail-manage >/dev/null <<'SH'
 #!/bin/sh
-exec sudo -u onesmarter /var/www/securemail-backend/venv/bin/python /usr/local/lib/securemail-manage.py "$@"
+exec sudo -u ubuntu /var/www/securemail-backend/venv/bin/python /usr/local/lib/securemail-manage.py "$@"
 SH
 sudo chmod 0755 /usr/local/bin/securemail-manage
 ```
@@ -543,10 +547,10 @@ prompts twice without echo. Never delete a store to rerun initialization.
 
 ```bash
 cd /var/www/securemail-backend/current
-sudo -u onesmarter env APP_ENV=production /var/www/securemail-backend/venv/bin/python -m backend.keyservice init --store /var/lib/onesmarter-key/store.sqlite3
-sudo -u onesmarter env APP_ENV=production /var/www/securemail-backend/venv/bin/python -m backend.keyservice checkpoint --store /var/lib/onesmarter-key/store.sqlite3 --destination /var/lib/onesmarter-key/initial-checkpoint.json
-sudo install -d -o root -g onesmarter -m 0750 /etc/onesmarter-trust
-sudo install -o root -g onesmarter -m 0640 /var/lib/onesmarter-key/initial-checkpoint.json /etc/onesmarter-trust/checkpoint.json
+sudo -u ubuntu env APP_ENV=production /var/www/securemail-backend/venv/bin/python -m backend.keyservice init --store /var/lib/onesmarter-key/store.sqlite3
+sudo -u ubuntu env APP_ENV=production /var/www/securemail-backend/venv/bin/python -m backend.keyservice checkpoint --store /var/lib/onesmarter-key/store.sqlite3 --destination /var/lib/onesmarter-key/initial-checkpoint.json
+sudo install -d -o root -g ubuntu -m 0750 /etc/onesmarter-trust
+sudo install -o root -g ubuntu -m 0640 /var/lib/onesmarter-key/initial-checkpoint.json /etc/onesmarter-trust/checkpoint.json
 ```
 
 Independently retain the checkpoint and encrypted backup off-host. A local copy
@@ -557,9 +561,9 @@ alone does not protect against root compromise. Do not refresh an anchor blindly
 Use the real organization UUID, not the staff ID. Run from the current checkout:
 
 ```bash
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/gateway-client.pem --name custody-gateway --role custodian --days 30
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/workload-client.pem --name application-workload --role workload --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/rotation-client.pem --name offline-key-maintenance --role maintenance --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/gateway-client.pem --name custody-gateway --role custodian --days 30
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/workload-client.pem --name application-workload --role workload --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python -m backend.keyservice identity --policy /etc/onesmarter-key/policy.json --cert /etc/onesmarter-key/pki/rotation-client.pem --name offline-key-maintenance --role maintenance --organization REPLACE_WITH_ORGANIZATION_UUID --days 30
 ```
 
 Do not run concurrent policy writers. Certificate and policy expiry are independent;
@@ -572,7 +576,7 @@ the shared service user while the key service is stopped. This user can already
 read the application environment under the selected single-user model:
 
 ```bash
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python - <<'PY'
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python - <<'PY'
 import os
 import sys
 from dotenv import load_dotenv
@@ -601,7 +605,7 @@ KEY_SERVICE_CUSTODIAN_DIRECTORY=/var/lib/onesmarter-key/accounts
 ```
 
 ```bash
-sudo chown onesmarter:onesmarter /etc/onesmarter-key/service.env
+sudo chown ubuntu:ubuntu /etc/onesmarter-key/service.env
 sudo chmod 0600 /etc/onesmarter-key/service.env
 ```
 
@@ -767,12 +771,12 @@ sudo install -d -m 0755 /etc/systemd/system/onesmarter-api.service.d
 sudo tee /etc/systemd/system/onesmarter-api.service.d/20-socket-group.conf >/dev/null <<'EOF'
 [Service]
 Group=onesmarter-web
-SupplementaryGroups=onesmarter
+SupplementaryGroups=ubuntu
 EOF
 ```
 
 On restart the API runtime directory/socket use this group; the API retains its
-application-group access. Do not add www-data to onesmarter.
+application-group access. Do not add www-data to the ubuntu group.
 Verify the socket permissions and an actual proxied request after starting.
 
 Create `/etc/systemd/system/onesmarter-nginx.service` with `sudoedit`:
@@ -865,7 +869,7 @@ a healthy backup/checkpoint setup; do not delete state to retry a failed operati
 ```bash
 cd /var/www/securemail-backend/current
 /var/www/securemail-backend/venv/bin/python scripts/verify_pq_endpoint.py --host securemailbackend.onesmarter.com --port 443 --ca /etc/ssl/certs/ca-certificates.crt
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python scripts/verify_pq_endpoint.py --host keys.internal --port 8443 --ca /etc/onesmarter/pki/key-service-ca.pem --cert /etc/onesmarter/pki/workload.pem --key /etc/onesmarter/pki/workload.key
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python scripts/verify_pq_endpoint.py --host keys.internal --port 8443 --ca /etc/onesmarter/pki/key-service-ca.pem --cert /etc/onesmarter/pki/workload.pem --key /etc/onesmarter/pki/workload.key
 ```
 
 Verify staff/custodian MFA, saved portal IONOS credentials and authorized sender,
@@ -896,7 +900,7 @@ Store the private CA and recovery secret off-host and retain coordinated backups
 
 | Symptom | Check and correction |
 |---|---|
-| Backend environment is empty or unavailable | Use the step-10 launcher. Run `sudo -u onesmarter test -r /etc/onesmarter/backend.env`; do not make the file world-readable. |
+| Backend environment is empty or unavailable | Use the step-10 launcher. Run `sudo -u ubuntu test -r /etc/onesmarter/backend.env`; do not make the file world-readable. |
 | KEY_SERVICE_CA/CERT/KEY must name an existing file | Complete off-host signing and certificate installation; a CSR is not a certificate. |
 | Audit archive bucket, region and positive retention are required | Fill the actual approved settings; do not disable validation. |
 | keys.internal cannot resolve | Verify the step-6 hosts entry with `getent ahostsv4 keys.internal`. |

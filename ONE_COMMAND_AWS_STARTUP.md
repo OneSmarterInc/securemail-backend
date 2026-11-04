@@ -28,7 +28,7 @@ The target does not install missing software, issue certificates or unseal keys.
 | Certificate policy | `/etc/onesmarter-key/policy.json` |
 | Independently protected checkpoint | `/etc/onesmarter-trust/checkpoint.json` |
 
-The API, key service, worker and beat all run as `onesmarter`. They retain
+The API, key service, worker and beat all run as `ubuntu`. They retain
 separate processes, environment files and data paths, but there is no OS-user
 isolation between the API and key store. A compromise under this account can
 access both. TLS policy and custodian unseal remain enforced by the service;
@@ -164,12 +164,12 @@ If verification fails, it restores the overwritten file contents.
 ## 6. Check environment, executable access and migrations
 
 ```bash
-sudo -u onesmarter test -r /etc/onesmarter/backend.env
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python --version
-sudo -u onesmarter /var/www/securemail-backend/venv/bin/python --version
+sudo -u ubuntu test -r /etc/onesmarter/backend.env
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python --version
+sudo -u ubuntu /var/www/securemail-backend/venv/bin/python --version
 ```
 
-backend.env stays root:onesmarter mode 0640. service.env is readable only by the
+backend.env stays root:ubuntu mode 0640. service.env is readable only by the
 key-service identity/operator and contains:
 
 ```dotenv
@@ -182,14 +182,14 @@ Use your installed management launcher as the application account so it can read
 the protected backend environment:
 
 ```bash
-sudo -u onesmarter -- "$(command -v securemail-manage)" migrate --plan
+sudo -u ubuntu -- "$(command -v securemail-manage)" migrate --plan
 ```
 
 Only after the plan succeeds and the database backup is ready:
 
 ```bash
-sudo -u onesmarter -- "$(command -v securemail-manage)" migrate --noinput
-sudo -u onesmarter -- "$(command -v securemail-manage)" check --deploy
+sudo -u ubuntu -- "$(command -v securemail-manage)" migrate --noinput
+sudo -u ubuntu -- "$(command -v securemail-manage)" check --deploy
 ```
 
 If securemail-manage is missing or points to old paths, use the explicit dotenv
