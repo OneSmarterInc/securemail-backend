@@ -1008,7 +1008,9 @@ def upload_for(request, *, user=None, grant=None, captured_metadata=None):
     rate_limit(request, "upload", str(user.pk if user else grant.pk), maximum=30)
     upload = request.FILES.get("file")
     if not upload or upload.size <= 0 or upload.size > settings.MAX_UPLOAD_BYTES:
-        raise Problem("Choose a non-empty file up to 25 MB.")
+        raise Problem(
+            f"Choose a non-empty file up to {settings.MAX_UPLOAD_BYTES / (1024 * 1024):g} MiB."
+        )
     from django.db.models import Sum
 
     with transaction.atomic():

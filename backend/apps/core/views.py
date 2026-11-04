@@ -21,7 +21,14 @@ def health(request):
 @endpoint(["GET"])
 def document_service_status(request):
     ready = document_service.ready()
-    response = Response({"ready": ready, "message": "" if ready else "Service is disabled."})
+    response = Response(
+        {
+            "ready": ready,
+            "message": "" if ready else "Service is disabled.",
+            "max_upload_bytes": settings.MAX_UPLOAD_BYTES,
+            "max_files": settings.MAX_FILES,
+        }
+    )
     response["Cache-Control"] = "no-store"
     return response
 

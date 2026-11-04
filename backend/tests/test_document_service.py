@@ -43,7 +43,8 @@ def test_unreachable_service_fails_closed(staff_client, monkeypatch):
     )
     assert compose(staff_client).status_code == 503
     response = staff_client.get("/api/document-service")
-    assert response.json() == {"ready": False, "message": "Service is disabled."}
+    assert response.json()["ready"] is False
+    assert response.json()["message"] == "Service is disabled."
     assert response["Cache-Control"] == "no-store"
 
 

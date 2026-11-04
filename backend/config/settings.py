@@ -160,14 +160,16 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "EXCEPTION_HANDLER": "backend.apps.core.http.exception_handler",
 }
-DATA_UPLOAD_MAX_MEMORY_SIZE = 27 * 1024 * 1024
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
+if not 1024 * 1024 <= MAX_UPLOAD_BYTES <= 25 * 1024 * 1024:
+    raise ImproperlyConfigured("MAX_UPLOAD_BYTES must be between 1 and 25 MiB.")
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_BYTES + 2 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = DATA_UPLOAD_MAX_MEMORY_SIZE
 FILE_UPLOAD_HANDLERS = ["backend.apps.core.upload_handlers.BoundedMemoryUploadHandler"]
 SETUP_TOKEN_SHA256 = os.environ.get("SETUP_TOKEN_SHA256", "")
 DEV_INBOX_TOKEN_SHA256 = os.environ.get("DEV_INBOX_TOKEN_SHA256", "")
 STAGED_UPLOAD_QUOTA_BYTES = int(os.environ.get("STAGED_UPLOAD_QUOTA_BYTES", str(100 * 1024 * 1024)))
 
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_FILES = 10
 CRYPTO_PROVIDER = "onesmarter-hybrid-v2"
 KEY_PROTECTOR = os.environ.get(
