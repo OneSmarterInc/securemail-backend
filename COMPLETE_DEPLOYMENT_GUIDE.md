@@ -75,7 +75,7 @@ The key service is not a file server. Documents stay in the backend's persistent
 storage; keys are managed separately. The application can receive temporary DEKs
 for authorized decryption, so application compromise remains in the threat model.
 
-## 4. Recommended initial machine layout
+## 4. Single-EC2 machine layout (selected by owner)
 
 This is a proposed layout, not a record of provisioned resources:
 
@@ -83,13 +83,17 @@ This is a proposed layout, not a record of provisioned resources:
 |---|---|
 | Vercel project | React application only |
 | AWS application EC2 host | API nginx, Gunicorn, worker, beat; initially private local PostgreSQL/Redis if that operating model is approved |
-| Separate private AWS key EC2 host | Key service and its custodian account store |
+| Same EC2, separate `onesmarter-key` OS user | Key service on `127.0.0.1:8443` and its custodian account store |
 | Restricted gateway | May run as a separate nginx service on the application host; separate certificate and permissions |
 | Separate administration/backup account or host | Checkpoint receiver and off-host backup copies |
 
-Keeping the key service on a separate host preserves a meaningful OS boundary.
-Separate processes on the same host are cheaper but share its compromise/failure
-boundary. This guide does not silently choose that weaker arrangement.
+The owner selected one EC2 instance. App and key service have separate OS users,
+configuration, client identities and data directories, but share host-root and
+hardware failure risks. This is not equivalent to a separate host or HSM.
+Off-host backups, checkpoints and custodian recovery secrets remain necessary.
+All references below to the application host and key host mean this same EC2,
+using their distinct paths and Linux identities. See SINGLE_EC2_DEPLOYMENT.md
+for the ordered installation checklist.
 
 PostgreSQL and Redis can move to approved private managed services later. That
 requires explicit connection encryption, identity, backup and non-PQ-hop review;
@@ -107,7 +111,7 @@ flowchart TB
     Worker --> Redis
     Beat[One Celery beat] --> Redis
     Worker --> SMTP[SMTP provider]
-    Django -->|PQ mTLS, workload identity| Keys[Private key service :8443]
+    Django -->|PQ mTLS, workload identity| Keys[Same EC2: key service 127.0.0.1:8443]
     Worker -->|PQ mTLS, workload identity| Keys
     Custodian[Custodian browser via approved private access] --> Gateway[AWS maintenance gateway]
     Gateway -->|PQ mTLS, custodian gateway identity| Keys
@@ -123,7 +127,7 @@ flowchart TB
 | Backend API | `securemailbackend.onesmarter.com` | Supplied by owner |
 | Main frontend | `securemail.onesmarter.com` | Proposed; owner must confirm |
 | Maintenance | `custody.onesmarter.com` | Proposed; owner must confirm |
-| Internal key service | `keys.internal` | Local `/etc/hosts` mapping to key-service private IP |
+| Internal key service | `keys.internal` | Local `/etc/hosts` mapping to `127.0.0.1` |
 
 The API URL is `https://securemailbackend.onesmarter.com`. Browser calls append
 `/api/...` or `/recipient-api/...`. Do not add `/api` to `VITE_BACKEND_URL`.
@@ -137,59 +141,38 @@ The API URL is `https://securemailbackend.onesmarter.com`. Browser calls append
    DNS record does not mean the service must accept public connections.
 5. Issue certificates for the names clients actually visit.
 
-**PREPARE — local hostname mapping (no private DNS service):**
+**PREPARE — localhost mapping (no private DNS service):**
 
-Use each Linux client's `/etc/hosts` file instead of a Route 53 private hosted
-zone. No hosted zone, Resolver endpoint, or domain purchase is needed for this
-internal name. Public frontend/API DNS is unchanged.
+All application, worker and custody-gateway processes run natively on this EC2.
+Inspect existing entries with `grep -n 'keys.internal' /etc/hosts`, then use
+`sudoedit /etc/hosts` to add/update exactly one entry, preserving unrelated lines:
 
-1. In EC2, identify the key-service instance's actual private IPv4 address.
-   `10.0.2.20` below is an example only; do not use it unless it is that instance.
-2. On the application host (including the Celery worker host) and custody-gateway
-   host, inspect existing entries before editing:
+```text
+127.0.0.1 keys.internal
+```
 
-   ```bash
-   grep -n 'keys.internal' /etc/hosts
-   ```
+Run `getent ahostsv4 keys.internal`; all returned addresses must be `127.0.0.1`.
+Linux `/etc/nsswitch.conf` must consult `files` in its `hosts:` entry. `dig` and
+`nslookup` query DNS and do not validate this local mapping.
 
-3. Edit with `sudoedit /etc/hosts`. Add or update exactly one mapping, retaining
-   unrelated entries. Replace the example IP with the actual key-service IP:
+The supplied `deploy/onesmarter-keyservice.service` binds `127.0.0.1:8443`.
+Keep `KEY_SERVICE_URL=https://keys.internal:8443`, server certificate SAN
+`DNS:keys.internal`, mTLS, CA verification, SNI and PQ checks. The local custody
+proxy also verifies `keys.internal`. Do not substitute `http://`, disable TLS
+verification, or open port 8443 in a security group. No Route 53 zone, Resolver
+endpoint or private-domain purchase is needed.
 
-   ```text
-   10.0.2.20 keys.internal
-   ```
+After installation run `sudo ss -ltnp 'sport = :8443'`: the only listener must be
+`127.0.0.1:8443`, never `0.0.0.0`, `[::]` or an EC2 network-interface address.
+Validate and reload nginx after hostname changes; restart app/worker processes
+to clear pooled connections. Public browsers access the API and restricted
+maintenance gateway on HTTPS; they never connect to port 8443.
 
-4. Verify on EVERY connecting host:
-
-   ```bash
-   getent ahostsv4 keys.internal
-   ```
-
-   Every returned address must be the intended key-service private IPv4. Linux
-   hostname resolution must consult `files` in `/etc/nsswitch.conf`'s `hosts:`
-   entry. Use `getent`, not `dig` or `nslookup`, to test `/etc/hosts` resolution.
-
-Keep `KEY_SERVICE_URL=https://keys.internal:8443` and certificate SAN
-`DNS:keys.internal`. Keep CA validation, mTLS, SNI and PQ transport checks enabled.
-Do not replace the URL with an IP unless a matching IP SAN is deliberately issued.
-For the custody proxy, retain `proxy_ssl_name keys.internal`, SNI and certificate
-verification. Validate `nginx -t` and reload nginx after a mapping change; restart
-application and worker services during a maintenance window to clear old pooled
-connections. Validate the actual mTLS endpoint using the transport check below.
-
-This mapping is local to each machine. Containers do not inherit the host's
-`/etc/hosts`; if containerized, set `extra_hosts`/`--add-host` for every connecting
-API, worker and gateway container using the same actual private IP. Do not mount
-the entire host `/etc/hosts` into containers. The native systemd deployment in
-this guide uses the host mapping directly.
-
-Keep the key host's private IP stable. If the instance/private IP is replaced,
-update every mapping and repeat transport verification. This manual maintenance
-is the tradeoff for avoiding private DNS. Clients still need private network
-routing and the security-group rules below. Public browsers connect only to the
-portal, never directly to `keys.internal`.
-
-These are preparation instructions; no EC2 host mapping was changed locally.
+This profile is native systemd. Containers have separate localhost namespaces;
+do not reuse these networking instructions inside bridge-network containers.
+Do not set `PrivateNetwork=true` on these units: it would isolate their loopback
+interfaces from each other. Separate service users still enforce file access.
+No EC2 configuration has been changed from the local workstation.
 
 Firewall/security-group targets:
 
@@ -197,7 +180,7 @@ Firewall/security-group targets:
 |---|---|---|
 | API ingress | TCP 443 | Approved public client access |
 | Maintenance ingress | TCP 443 | Approved VPN/operator network |
-| Key EC2 | TCP 8443 | Application and custody-gateway security groups only |
+| Local key service | TCP 8443, loopback only | Local authenticated app/gateway processes; no EC2 inbound rule |
 | PostgreSQL | TCP 5432 | Application host only, or local loopback |
 | Redis | TCP 6379 | Application processes only, or local loopback |
 | SSH | TCP 22 | Approved admin network, or use SSM instead |
@@ -879,8 +862,8 @@ Assign alert owners and record RTO/RPO. There is no antivirus service to operate
 | Symptom | Check first |
 |---|---|
 | `Production configuration invalid` | Supply the named settings; do not change APP_ENV to bypass validation |
-| `keys.internal` does not resolve | Check `/etc/hosts` on the connecting host/container, `hosts: files` resolution, and the actual key-host IP |
-| 8443 connection refused | Service status and private bind address; do not publish the port publicly |
+| `keys.internal` does not resolve | Check `/etc/hosts` maps to `127.0.0.1` and `hosts:` consults `files` |
+| 8443 connection refused | Service status and `127.0.0.1:8443` listener; do not publish the port publicly |
 | TLS handshake fails | Actual group support, hostname/SAN, CA chain, client certificate and expiry |
 | TLS works but service returns 403 | Fingerprint policy, expiry, role/organization/operation scope |
 | Custodian account not found | CLI and service account-directory values/OS identity match |

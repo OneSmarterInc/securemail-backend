@@ -286,3 +286,5 @@ Earlier test counts and CI results apply only to their earlier revisions.
 
 Historical candidate release status: F-07 waits for the prerequisite merge and tests.
 
+
+Single EC2 (localhost key service, no private DNS): [step-by-step backend and frontend setup](SINGLE_EC2_DEPLOYMENT.md).

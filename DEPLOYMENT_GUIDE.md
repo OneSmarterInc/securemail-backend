@@ -16,7 +16,7 @@ not security approval; the experimental audit candidate remains synthetic-only.
 | API on AWS | `https://securemailbackend.onesmarter.com` | Owner supplied |
 | React app on Vercel | `https://securemail.onesmarter.com` | Proposed; confirm before DNS |
 | Custody gateway on AWS/private access | `https://custody.onesmarter.com` | Proposed; confirm before DNS |
-| Key service | `https://keys.internal:8443` | Private PKI; local `/etc/hosts` mapping |
+| Key service | `https://keys.internal:8443` | Same EC2; `keys.internal` maps to `127.0.0.1` |
 
 ```mermaid
 flowchart LR
@@ -28,7 +28,7 @@ flowchart LR
   W[Celery worker + one beat] --> P
   W --> R
   A --> D[(Persistent encrypted document files)]
-  A -->|PQ mTLS| K[Isolated sealed key service]
+  A -->|PQ mTLS| K[Same EC2: loopback sealed key service]
   C[Custodian browser] --> G[Restricted AWS custody gateway]
   G -->|PQ mTLS| K
   K --> O[Separately administered checkpoint / backup target]
@@ -38,8 +38,8 @@ Vercel serves static assets. API calls, uploads and downloads go directly from t
 browser to AWS; Vercel does not proxy confidential document bodies. Never put
 database, SMTP, signing, recovery or mTLS secrets into the frontend environment.
 
-For `keys.internal`, use a local `/etc/hosts` mapping to the key host's private
-IP on every API/worker and custody-gateway host. No Route 53 private zone is
+For the selected single-EC2 native deployment, map `keys.internal` to `127.0.0.1`
+in `/etc/hosts`. App, worker and custody gateway use the same host loopback. No Route 53 private zone is
 required. Keep the hostname in the HTTPS URL and server certificate; do not
 disable certificate verification. See COMPLETE_DEPLOYMENT_GUIDE.md for mapping,
 container and IP-change instructions.
@@ -300,3 +300,5 @@ safely. Preserve old keys until the approved recovery/retirement checks pass.
 
 No AWS/Vercel deployment, external crypto approval or real-domain handshake was
 performed by preparing and publishing these repositories.
+
+Single-server setup: follow [the ordered backend and frontend steps](SINGLE_EC2_DEPLOYMENT.md).
