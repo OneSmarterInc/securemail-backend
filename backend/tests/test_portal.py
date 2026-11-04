@@ -118,10 +118,8 @@ def test_service_auth_replay_idempotency_and_ciphertext(configured):
         "@" not in value
         for value in PortalMailbox.objects.values_list("email_ciphertext", flat=True)
     )
-    # Provider notification is never enqueued, even the initial request.
-    assert [mail.payload(job)["to"] for job in DeliveryJob.objects.all()] == [
-        "patient@example.test"
-    ]
+    # The clinic is suppressed in this fixture; the private request never notifies the patient.
+    assert not DeliveryJob.objects.exists()
 
 
 def test_patient_clinic_inboxes_replies_search_unread_and_isolation(configured):
@@ -157,7 +155,7 @@ def test_patient_clinic_inboxes_replies_search_unread_and_isolation(configured):
         ).status_code
         == 404
     )
-    assert inbox(patient)[0]["unread"]
+    assert not inbox(patient)[0]["unread"]
     assert patient.get("/recipient-api/inbox/threads/" + first).status_code == 200
     assert not next(row for row in inbox(patient) if row["id"] == first)["unread"]
     key = uuid.uuid4().hex
@@ -251,6 +249,7 @@ def test_session_expiry_revocation_csrf_and_no_poll_renewal(configured):
 
 
 def test_delayed_worker_checks_suppression_revocation_and_otp(configured, settings):
+    settings.SECURE_MAIL_INTEGRATIONS["selfpay"]["suppress_provider_notifications"] = False
     ident = signed(Client(), payload()).json()["id"]
     job = DeliveryJob.objects.get()
     data = mail.payload(job)
@@ -333,7 +332,7 @@ def test_message_history_pagination_and_eight_hour_limit(configured):
     older = patient.get(
         "/recipient-api/inbox/threads/" + ident, {"before": current["next_before"]}
     ).json()
-    assert len(older["messages"]) == 3
+    assert len(older["messages"]) == 2
     assert not {m["id"] for m in current["messages"]} & {m["id"] for m in older["messages"]}
     PortalSession.objects.update(
         created_at=timezone.now() - timedelta(hours=9),
@@ -451,3 +450,66 @@ def test_selfpay_notifications_use_environment_smtp(configured, settings, monkey
     message = transport.send_messages.call_args.args[0][0]
     assert parseaddr(message.from_email)[1] == "support@onesmarter.com"
     assert message.reply_to == ["support@onesmarter.com"]
+
+
+def test_private_booking_confirmation_visibility_and_retry(configured, settings):
+    settings.SECURE_MAIL_INTEGRATIONS["selfpay"].update(
+        suppress_provider_notifications=False,
+        provider_action_origins=["https://myselfpay.example.test"],
+    )
+    service = Client()
+    ident = signed(service, payload()).json()["id"]
+    assert mail.payload(DeliveryJob.objects.get())["to"] == "clinic@example.test"
+    patient, _ = login("patient@example.test")
+    clinic, _ = login("clinic@example.test")
+    path = "/recipient-api/inbox/threads/" + ident
+    assert not patient.get(path).json()["request_summary"]
+    assert clinic.get(path).json()["request_summary"] == payload()["body"]
+    event = {
+        "event_type": "booking_confirmed",
+        "external_id": "MSP-SYNTHETIC",
+        "event_id": "booking-confirmed-v1",
+        "body": "Private confirmation",
+        "actions": [
+            {
+                "label": "View my booking",
+                "url": "https://myselfpay.example.test/#request/test/private-token",
+                "expires_at": time.time() + 3600,
+            }
+        ],
+    }
+    count = DeliveryJob.objects.count()
+    result = signed(service, event)
+    assert result.status_code == 201, result.content
+    assert DeliveryJob.objects.count() == count + 1
+    job = mail.payload(DeliveryJob.objects.latest("created_at"))
+    assert job["to"] == "patient@example.test"
+    assert "private-token" not in str(job) and "Private confirmation" not in str(job)
+    assert signed(service, event).status_code == 200
+    assert DeliveryJob.objects.count() == count + 1
+    assert signed(service, {**event, "body": "Changed"}).status_code == 409
+    patient_data = patient.get(path).json()
+    assert patient_data["messages"][0]["body"] == "Private confirmation"
+    assert patient_data["messages"][0]["actions"] == event["actions"]
+    clinic_data = clinic.get(path).json()
+    assert "Private confirmation" not in str(clinic_data)
+    assert "private-token" not in str(clinic_data)
+    assert clinic.get(path, {"before": result.json()["id"]}).status_code == 400
+    event["event_id"] = "bad-origin"
+    event["actions"][0]["url"] = "https://attacker.example/request"
+    assert signed(service, event).status_code == 400
+
+
+def test_legacy_booking_is_hidden_from_requester(configured):
+    from backend.apps.core.portal import encrypt
+
+    ident = signed(Client(), payload()).json()["id"]
+    message = PortalMessage.objects.get()
+    message.audience = "all"
+    message.body_ciphertext = encrypt(
+        payload()["body"], message.thread.organization_id, "portal-message", message.pk
+    )
+    message.save()
+    patient, _ = login("patient@example.test")
+    result = patient.get("/recipient-api/inbox/threads/" + ident).json()
+    assert not result["messages"] and not result["request_summary"]

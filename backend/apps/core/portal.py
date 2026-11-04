@@ -221,6 +221,10 @@ def create_thread(request):
     data = request.data
     if not isinstance(data, dict):
         raise Problem("A JSON object is required.")
+    if data.get("event_type") == "booking_confirmed":
+        return confirmation_event(source, config, owner, data)
+    if "event_type" in data:
+        raise Problem("Unsupported integration event.")
     external_id = field(data, "external_id", 100)
     title, body = field(data, "subject", 200), field(data, "body", 16000)
     people = data.get("participants")
@@ -309,13 +313,21 @@ def create_thread(request):
                 suppress_notifications=person["role"] == "provider"
                 and config.get("suppress_provider_notifications", True),
             )
-            notify(participant, initial=True)
+            if source != "selfpay" or person["role"] == "provider":
+                notify(participant, initial=True)
         thread.metadata_ciphertext = encrypt(
             metadata, owner.organization_id, "portal-thread", thread.pk
         )
         thread.save(update_fields=["metadata_ciphertext"])
-        message = PortalMessage(thread=thread, submission_key="initial", fingerprint=fingerprint)
-        message.body_ciphertext = encrypt(body, owner.organization_id, "portal-message", message.pk)
+        message = PortalMessage(
+            thread=thread,
+            submission_key="initial",
+            fingerprint=fingerprint,
+            audience="provider" if source == "selfpay" else "all",
+        )
+        message.body_ciphertext = encrypt(
+            body, owner.organization_id, "portal-message", message_context_id(message)
+        )
         message.save()
         audit(owner.organization, owner, "integration.thread_created", "portal_thread", thread.pk)
     return Response(
@@ -328,6 +340,128 @@ def create_thread(request):
         },
         status=201,
     )
+
+
+def message_context_id(message):
+    # Bind private-message audience to authenticated encryption as well as SQL filtering.
+    return message.pk if message.audience == "all" else f"{message.pk}:{message.audience}"
+
+
+def visible_messages(thread, member):
+    messages = thread.messages.filter(Q(audience="all") | Q(audience=member.role))
+    # Previously-created SelfPay booking details must also be clinic-only.
+    if thread.source == "selfpay" and member.role != "provider":
+        messages = messages.exclude(sender=None, submission_key="initial")
+    return messages
+
+
+def confirmation_event(source, config, owner, data):
+    external_id = field(data, "external_id", 100)
+    event_id = field(data, "event_id", 80)
+    body = field(data, "body", 16000)
+    actions = data.get("actions", [])
+    if not isinstance(actions, list) or len(actions) > 5:
+        raise Problem("Invalid confirmation actions.")
+    normalized = []
+    for action in actions:
+        if not isinstance(action, dict):
+            raise Problem("Invalid confirmation action.")
+        url, label = field(action, "url", 2048), field(action, "label", 80)
+        parsed = urlsplit(url)
+        expiry = action.get("expires_at")
+        if (
+            parsed.scheme != "https"
+            or parsed.username
+            or parsed.password
+            or f"{parsed.scheme}://{parsed.netloc}" not in config.get("provider_action_origins", [])
+            or not isinstance(expiry, (int, float))
+            or isinstance(expiry, bool)
+            or not 0 < expiry < time.time() + 31 * 86400
+        ):
+            raise Problem("Invalid confirmation action.")
+        normalized.append({"url": url, "label": label, "expires_at": expiry})
+    content = {"body": body, "actions": normalized}
+    fingerprint = keyed(json.dumps(content, sort_keys=True), purpose="portal-confirmation")
+    with transaction.atomic():
+        lock_organization(owner.organization)
+        thread = (
+            PortalThread.objects.select_for_update()
+            .filter(
+                source=source,
+                external_id=external_id,
+                organization=owner.organization,
+                owner=owner,
+                revoked_at=None,
+            )
+            .first()
+        )
+        if not thread:
+            raise Problem("Conversation unavailable.", "not_found", 404)
+        key = "confirmation:" + event_id
+        prior = thread.messages.filter(sender=None, submission_key=key).first()
+        if prior:
+            if not hmac.compare_digest(prior.fingerprint, fingerprint):
+                raise Problem(
+                    "Event ID reused with different content.", "idempotency_conflict", 409
+                )
+            return Response({"id": str(prior.pk), "thread_id": str(thread.pk)})
+        recipient = (
+            thread.participants.select_related("mailbox", "thread__organization", "thread__owner")
+            .filter(
+                role="requester",
+                revoked_at=None,
+                mailbox__disabled_at=None,
+            )
+            .first()
+        )
+        if not recipient:
+            raise Problem("Recipient unavailable.", "not_found", 404)
+        message = PortalMessage(
+            thread=thread, audience="requester", submission_key=key, fingerprint=fingerprint
+        )
+        message.body_ciphertext = encrypt(
+            content, thread.organization_id, "portal-message", message_context_id(message)
+        )
+        message.save()
+        thread.updated_at = message.created_at
+        thread.save(update_fields=["updated_at"])
+        notify(recipient)
+        audit(
+            owner.organization,
+            owner,
+            "integration.confirmation_created",
+            "portal_thread",
+            thread.pk,
+        )
+    return Response({"id": str(message.pk), "thread_id": str(thread.pk)}, status=201)
+
+
+def message_output(message, thread, info, mailbox_id):
+    content = decrypt(
+        message.body_ciphertext,
+        thread.organization_id,
+        "portal-message",
+        message_context_id(message),
+    )
+    actions = content.get("actions", []) if isinstance(content, dict) else []
+    allowed = integration(thread.source).get("provider_action_origins", [])
+    actions = [
+        action
+        for action in actions
+        if action["expires_at"] > time.time()
+        and f"{urlsplit(action['url']).scheme}://{urlsplit(action['url']).netloc}" in allowed
+    ]
+    return {
+        "id": str(message.pk),
+        "body": content["body"] if isinstance(content, dict) else content,
+        "actions": actions,
+        "audience": message.audience,
+        "initial": message.sender_id is None and message.submission_key == "initial",
+        "sender": info["names"].get(str(message.sender_id), info["source_name"]),
+        "mine": message.sender_id == mailbox_id,
+        "system": message.sender_id is None,
+        "created_at": message.created_at.isoformat(),
+    }
 
 
 def active_memberships(mailbox):
@@ -529,14 +663,17 @@ def inbox(request):
         names = [name for ident, name in info["names"].items() if ident != str(session.mailbox_id)]
         if query and query not in (" ".join(names) + " " + info["subject"]).casefold():
             continue
+        latest = visible_messages(thread, member).order_by("-created_at", "-id").first()
+        updated_at = latest.created_at if latest else thread.created_at
         results.append(
             {
                 "id": str(thread.pk),
                 "name": ", ".join(names),
                 "subject": info["subject"],
                 "source": info["source_name"],
-                "updated_at": thread.updated_at.isoformat(),
-                "unread": member.last_read is None or thread.updated_at > member.last_read,
+                "updated_at": updated_at.isoformat(),
+                "unread": bool(latest)
+                and (member.last_read is None or updated_at > member.last_read),
             }
         )
     audit(
@@ -605,10 +742,10 @@ def thread_detail(request, ident):
             return Response({"id": str(message.pk)}, status=201)
         # Paginate old messages without exposing any other thread's data.
         before = request.query_params.get("before", "")
-        messages = thread.messages.order_by("-created_at", "-id")
+        messages = visible_messages(thread, member).order_by("-created_at", "-id")
         if before:
             try:
-                anchor = thread.messages.filter(pk=uuid.UUID(before)).first()
+                anchor = messages.filter(pk=uuid.UUID(before)).first()
             except ValueError:
                 anchor = None
             if not anchor:
@@ -618,17 +755,7 @@ def thread_detail(request, ident):
                 | Q(created_at=anchor.created_at, id__lt=anchor.pk)
             )
         batch = list(messages[:51])
-        output = [
-            {
-                "id": str(m.pk),
-                "body": decrypt(m.body_ciphertext, thread.organization_id, "portal-message", m.pk),
-                "sender": info["names"].get(str(m.sender_id), info["source_name"]),
-                "mine": m.sender_id == session.mailbox_id,
-                "system": m.sender_id is None,
-                "created_at": m.created_at.isoformat(),
-            }
-            for m in reversed(batch[:50])
-        ]
+        output = [message_output(m, thread, info, session.mailbox_id) for m in reversed(batch[:50])]
         if not before:
             member.last_read = thread.updated_at
             member.save(update_fields=["last_read"])
@@ -655,9 +782,16 @@ def thread_detail(request, ident):
                 revoked_at=None, mailbox__disabled_at=None
             ).select_related("mailbox")
         ]
-        initial = thread.messages.filter(sender=None, submission_key="initial").first()
+        initial = (
+            visible_messages(thread, member).filter(sender=None, submission_key="initial").first()
+        )
         request_summary = (
-            decrypt(initial.body_ciphertext, thread.organization_id, "portal-message", initial.pk)
+            decrypt(
+                initial.body_ciphertext,
+                thread.organization_id,
+                "portal-message",
+                message_context_id(initial),
+            )
             if initial
             else ""
         )

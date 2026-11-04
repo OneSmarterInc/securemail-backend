@@ -60,6 +60,15 @@ class PortalMessage(models.Model):
     thread = models.ForeignKey(PortalThread, on_delete=models.PROTECT, related_name="messages")
     sender = models.ForeignKey(PortalMailbox, null=True, on_delete=models.PROTECT)
     body_ciphertext = models.TextField()
+    audience = models.CharField(
+        max_length=16,
+        default="all",
+        choices=[
+            ("all", "All participants"),
+            ("provider", "Clinic only"),
+            ("requester", "Requester only"),
+        ],
+    )
     submission_key = models.CharField(max_length=100)
     fingerprint = models.CharField(max_length=64)
     created_at = models.DateTimeField(default=timezone.now)
@@ -68,7 +77,12 @@ class PortalMessage(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["thread", "submission_key", "sender"], name="portal_reply_idempotency"
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["thread", "submission_key"],
+                condition=models.Q(sender__isnull=True),
+                name="portal_system_idempotency",
+            ),
         ]
         indexes = [models.Index(fields=["thread", "created_at"])]
 
