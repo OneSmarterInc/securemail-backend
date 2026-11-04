@@ -28,9 +28,13 @@ The target does not install missing software, issue certificates or unseal keys.
 | Certificate policy | `/etc/onesmarter-key/policy.json` |
 | Independently protected checkpoint | `/etc/onesmarter-trust/checkpoint.json` |
 
-The two OS users remain separate: onesmarter for API/jobs and onesmarter-key for
-custody. Both can read root/operator-owned source and the venv; neither should
-modify them. They must not share writable data directories or private keys.
+The API, key service, worker and beat all run as `onesmarter`. They retain
+separate processes, environment files and data paths, but there is no OS-user
+isolation between the API and key store. A compromise under this account can
+access both. TLS policy and custodian unseal remain enforced by the service;
+they do not compensate for shared-UID filesystem access. PostgreSQL, Redis and
+nginx retain their own service accounts. Executable source/venv stay root-owned.
+For an existing installation follow SINGLE_USER_DEPLOYMENT.md before startup.
 
 ## 2. Finish the prerequisites already identified on your server
 
@@ -162,7 +166,7 @@ If verification fails, it restores the overwritten file contents.
 ```bash
 sudo -u onesmarter test -r /etc/onesmarter/backend.env
 sudo -u onesmarter /var/www/securemail-backend/venv/bin/python --version
-sudo -u onesmarter-key /var/www/securemail-backend/venv/bin/python --version
+sudo -u onesmarter /var/www/securemail-backend/venv/bin/python --version
 ```
 
 backend.env stays root:onesmarter mode 0640. service.env is readable only by the

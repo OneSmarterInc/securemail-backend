@@ -1,5 +1,8 @@
 # Production startup configuration
 
+**Current account model:** all four Secure Mail processes use `onesmarter`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
+
+
 Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
 
 
@@ -68,7 +71,7 @@ first. The following paths match that guide. Run on the key host:
 
 ```bash
 cd /opt/onesmarter-key/current
-sudo -u onesmarter-key env APP_ENV=production \
+sudo -u onesmarter env APP_ENV=production \
   /opt/onesmarter-key/venv/bin/python -m backend.keyservice init \
   --store /var/lib/onesmarter-key/store.sqlite3
 ```
@@ -82,12 +85,12 @@ its first checkpoint before serving requests.
 Export the initial checkpoint while you control the newly initialized store:
 
 ```bash
-sudo -u onesmarter-key env APP_ENV=production \
+sudo -u onesmarter env APP_ENV=production \
   /opt/onesmarter-key/venv/bin/python -m backend.keyservice checkpoint \
   --store /var/lib/onesmarter-key/store.sqlite3 \
   --destination /var/lib/onesmarter-key/initial-checkpoint.json
-sudo install -d -o root -g onesmarter-key -m 0750 /etc/onesmarter-trust
-sudo install -o root -g onesmarter-key -m 0640 \
+sudo install -d -o root -g onesmarter -m 0750 /etc/onesmarter-trust
+sudo install -o root -g onesmarter -m 0640 \
   /var/lib/onesmarter-key/initial-checkpoint.json \
   /etc/onesmarter-trust/checkpoint.json
 ```

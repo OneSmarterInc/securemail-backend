@@ -1,5 +1,7 @@
 # OneSmarter Secure Mail — backend
 
+Start here: [full sequential AWS setup](AWS_FROM_SCRATCH.md), using one `onesmarter` service user. Existing installations: [single-user migration](SINGLE_USER_DEPLOYMENT.md).
+
 Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
 
 

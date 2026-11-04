@@ -6,7 +6,20 @@ import subprocess
 
 import pytest
 
-from scripts.install_systemd_stack import UNITS, files_for, unit_name
+from scripts.install_systemd_stack import UNITS, files_for, unit_name, validate_override
+
+
+@pytest.mark.parametrize(
+    "content",
+    ["[Service]\nUser=onesmarter-key", "User=root", "User=", "Group=onesmarter-key"],
+)
+def test_rejects_stale_or_privileged_service_account_overrides(content):
+    with pytest.raises(ValueError):
+        validate_override(content)
+
+
+def test_allows_nginx_socket_group_without_changing_service_user():
+    validate_override("[Service]\nUser=onesmarter\nGroup=onesmarter-web\n")
 
 
 @pytest.mark.parametrize(
@@ -17,7 +30,7 @@ def test_rejects_invalid_or_non_cluster_unit(name):
         unit_name(name)
 
 
-def test_native_stack_preserves_isolation_and_custodian_unseal():
+def test_native_stack_uses_one_account_and_preserves_custodian_unseal():
     files = files_for("postgresql@17-main.service", "redis-server.service", "nginx.service")
     target = files["onesmarter.target"]
     for name in UNITS:
@@ -28,8 +41,11 @@ def test_native_stack_preserves_isolation_and_custodian_unseal():
         assert "/var/www/securemail-backend/venv/bin/" in unit
         assert "/opt/onesmarter" not in unit
         assert "Type=exec" in unit
+        assert "User=onesmarter\n" in unit
+        assert "Group=onesmarter\n" in unit
     key = files["onesmarter-keyservice.service"]
-    assert "User=onesmarter-key" in key
+    assert "User=onesmarter\n" in key
+    assert "Group=onesmarter\n" in key
     assert "--host 127.0.0.1" in key
     assert "--trusted-checkpoint" in key
     assert "--synthetic-only" not in key

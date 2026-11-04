@@ -45,6 +45,18 @@ def files_for(postgres: str, redis: str, nginx: str) -> dict[str, str]:
     return result
 
 
+def validate_override(content: str) -> None:
+    """Reject stale account/path overrides while retaining socket-group overrides."""
+    if "/opt/onesmarter" in content:
+        raise ValueError("Update old /opt paths in existing override first")
+    for line in content.splitlines():
+        name, separator, value = line.strip().partition("=")
+        if separator and name.strip() == "User" and value.strip() != "onesmarter":
+            raise ValueError("All Secure Mail services must use User=onesmarter")
+        if separator and name.strip() == "Group" and value.strip() == "onesmarter-key":
+            raise ValueError("Replace the old onesmarter-key service group")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--postgres-unit", required=True, type=unit_name)
@@ -70,8 +82,10 @@ def main() -> None:
     destination = Path("/etc/systemd/system")
     for unit in UNITS:
         for override in (destination / f"{unit}.d").glob("*.conf"):
-            if "/opt/onesmarter" in override.read_text(encoding="utf-8"):
-                parser.error(f"Update old /opt paths in existing override first: {override}")
+            try:
+                validate_override(override.read_text(encoding="utf-8"))
+            except ValueError as error:
+                parser.error(f"{error}: {override}")
     files = files_for(args.postgres_unit, args.redis_unit, args.nginx_unit)
     backup = Path("/var/backups/onesmarter-systemd") / str(time.time_ns())
     backup.mkdir(parents=True, mode=0o700)

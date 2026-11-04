@@ -1,5 +1,10 @@
 # Single EC2 backend and Vercel frontend: deployment order
 
+**Installation sequence:** use [AWS_FROM_SCRATCH.md](AWS_FROM_SCRATCH.md) for the current native AWS commands. The detailed sections below are reference material; do not mix their historical paths with the current procedure.
+
+**Current account model:** all four Secure Mail processes use `onesmarter`. PostgreSQL, Redis and nginx retain their system accounts. Existing installations must follow [the single-user migration](SINGLE_USER_DEPLOYMENT.md). This supersedes earlier separate-OS-user claims; key-service paths remain unchanged and custodian unseal stays manual.
+
+
 Current EC2 startup: [one-command startup and installation guide](ONE_COMMAND_AWS_STARTUP.md). The native units now use `/var/www/securemail-backend/current` and `/var/www/securemail-backend/venv`; `onesmarter.target` starts the stack while custodian unseal remains manual. This guide supersedes older executable paths and individual startup commands below.
 
 
@@ -27,13 +32,13 @@ or 6379. PostgreSQL/Redis must listen only locally in this arrangement.
 ## 2. Install accounts, directories and locked runtimes
 
 Follow sections 7–9 of COMPLETE_DEPLOYMENT_GUIDE.md on this ONE instance. Create
-both `onesmarter` and `onesmarter-key` system users. Keep app data under
+one `onesmarter` system user for all four application services. Keep app data under
 `/var/lib/onesmarter` and key data/accounts under `/var/lib/onesmarter-key`.
-Do not add the app user to the key-service group or grant it read access to the
-store, server private key, recovery secrets or custodian credential files.
+The shared UID can access the store, server private key and custodian credential
+files. Keep recovery secrets off-host; this model removes separate-user isolation.
 
-Install the backend release into both root-owned source locations:
-`/opt/onesmarter/current` and `/opt/onesmarter-key/current`. Runtime users must not
+Install the backend release into the root-owned source location:
+`/var/www/securemail-backend/current`. Runtime users must not
 be able to replace executable source. Build/install the approved PQ-capable
 Python/OpenSSL environment and hash-locked dependencies at the documented venv
 paths. The repository's deploy/Dockerfile.pq identifies the tested runtime;
@@ -207,4 +212,4 @@ Retain the previous release and configuration before deploying. Back up the
 application database, encrypted documents, key store and independently held
 checkpoint as a coordinated set. Do not replace/reinitialize an existing key
 store to fix startup. A compromised host root can affect both app and key service;
-separate users reduce exposure but do not provide separate-host isolation.
+the shared UID does not provide OS-user isolation.

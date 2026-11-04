@@ -7,8 +7,8 @@ RequiresMountsFor=/var/www/securemail-backend /var/lib/onesmarter-key
 
 [Service]
 Type=exec
-User=onesmarter-key
-Group=onesmarter-key
+User=onesmarter
+Group=onesmarter
 WorkingDirectory=/var/www/securemail-backend/current
 EnvironmentFile=/etc/onesmarter-key/service.env
 UMask=0077
