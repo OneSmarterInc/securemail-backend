@@ -513,3 +513,31 @@ def test_legacy_booking_is_hidden_from_requester(configured):
     patient, _ = login("patient@example.test")
     result = patient.get("/recipient-api/inbox/threads/" + ident).json()
     assert not result["messages"] and not result["request_summary"]
+
+
+def test_clinic_invitation_copy_excludes_timing_and_escapes_names(configured, settings):
+    from backend.apps.core.email_templates import notification_html
+
+    settings.SECURE_MAIL_INTEGRATIONS["selfpay"]["suppress_provider_notifications"] = False
+    data = payload()
+    data["participants"][0]["name"] = "Jamie <script>alert(1)</script>"
+    data["body"] = "Requested time: Tuesday 09:00. Confidential exam details."
+    result = signed(Client(), data)
+    assert result.status_code == 201
+    job = mail.payload(DeliveryJob.objects.get())
+    assert job["to"] == "clinic@example.test"
+    assert job["subject"] == "New appointment request via MySelfPay"
+    assert "Dear Synthetic Clinic Team" in job["body"]
+    assert data["participants"][0]["name"] in job["body"]
+    assert "MySelfPay booking reference: MSP-SYNTHETIC" in job["body"]
+    assert "self-pay healthcare services" in job["body"]
+    assert "one-time code" in job["body"]
+    assert "Tuesday" not in job["body"] and "09:00" not in job["body"]
+    assert "Confidential exam details" not in job["body"]
+    assert "patient@example.test" not in job["body"]
+    html = notification_html(job, protected=True)
+    assert "Review appointment request" in html
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+    assert signed(Client(), data).status_code == 200
+    assert DeliveryJob.objects.count() == 1

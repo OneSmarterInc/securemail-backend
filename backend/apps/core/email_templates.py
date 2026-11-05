@@ -27,6 +27,8 @@ def notification_html(data: dict, *, protected: bool) -> str:
     action = "Open secure portal" if protected else "Continue to OneSmarter"
     if data.get("invitation_id"):
         action = "Set up your account"
+    elif data.get("notification_kind") == "selfpay_clinic_request":
+        action = "Review appointment request"
     return _engine.get_template("notification.html").render(
         Context(
             {

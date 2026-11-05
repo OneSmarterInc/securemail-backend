@@ -185,7 +185,7 @@ def mailbox_for(org, address):
     return mailbox
 
 
-def notify(participant, *, initial=False):
+def notify(participant, *, initial=False, booking_names=None):
     thread = participant.thread
     config = integration(thread.source)
     # Suppression is enforced both here AND when the existing worker sends mail.
@@ -199,16 +199,36 @@ def notify(participant, *, initial=False):
         "portal-email",
         participant.mailbox_id,
     )
+    notification = {
+        "to": address,
+        "subject": "Your secure appointment conversation" if initial else "New secure message",
+        "body": "Open Secure Mail and verify your email to view your conversation. Please do not reply to this automated email.",
+        "link": portal_link(thread),
+        "portal_thread": str(thread.pk),
+        "portal_mailbox": str(participant.mailbox_id),
+    }
+    if initial and thread.source == "selfpay" and participant.role == "provider" and booking_names:
+        patient, clinic = booking_names
+        notification.update(
+            subject="New appointment request via MySelfPay",
+            notification_kind="selfpay_clinic_request",
+            body=(
+                f"Dear {clinic} Team,\n\n"
+                f"{patient} has submitted an appointment request to your clinic through MySelfPay.\n\n"
+                "MySelfPay helps patients find self-pay healthcare services and request "
+                "appointments directly with participating clinics.\n\n"
+                f"MySelfPay booking reference: {thread.external_id}\n\n"
+                "Please continue to OneSmarter Secure Mail to review the full request "
+                "and respond securely. You will be asked to verify your email using a "
+                "one-time code before accessing the conversation.\n\n"
+                "This request does not confirm an appointment. Your clinic must review "
+                "and complete the confirmation process.\n\n"
+                "Kind regards,\nOneSmarter Support\nSupporting MySelfPay communications"
+            ),
+        )
     queue_mail(
         thread.organization,
-        {
-            "to": address,
-            "subject": "Your secure appointment conversation" if initial else "New secure message",
-            "body": "Open Secure Mail and verify your email to view your conversation. Please do not reply to this automated email.",
-            "link": portal_link(thread),
-            "portal_thread": str(thread.pk),
-            "portal_mailbox": str(participant.mailbox_id),
-        },
+        notification,
         actor=thread.owner,
     )
 
@@ -314,7 +334,14 @@ def create_thread(request):
                 and config.get("suppress_provider_notifications", True),
             )
             if source != "selfpay" or person["role"] == "provider":
-                notify(participant, initial=True)
+                notify(
+                    participant,
+                    initial=True,
+                    booking_names=(
+                        next(p["name"] for p in normalized if p["role"] == "requester"),
+                        next(p["name"] for p in normalized if p["role"] == "provider"),
+                    ),
+                )
         thread.metadata_ciphertext = encrypt(
             metadata, owner.organization_id, "portal-thread", thread.pk
         )

@@ -1,5 +1,18 @@
 # SelfPay private booking messages
 
+## Clinic invitation wording update — 2026-11-05
+
+New SelfPay clinic invitations explain MySelfPay, name the requesting patient and
+clinic, and show the unique reference labeled "MySelfPay booking reference".
+The HTML button reads "Review appointment request" and leads to the existing
+email-verified Secure Mail conversation. No requested dates/times, exam details,
+patient email or residential address appear in this notification. The patient
+name is the explicitly requested exception to the earlier generic-email policy.
+It uses the existing support@onesmarter.com environment SMTP transport. Other
+notifications and OTPs retain their existing wording. Already queued payloads
+and already delivered invitations are not rewritten or automatically resent.
+No database migration, SelfPay deployment or frontend deployment is required.
+
 Booking requests are created after verified submission, before clinic approval.
 The initial request (including preferred appointment windows and the existing
 SelfPay clinic action link) is visible only to the provider participant.
@@ -12,7 +25,8 @@ participant role. Message audience is bound to the encryption context. Previousl
 created SelfPay initial messages are also hidden from requester reads. This
 cannot retract content a recipient accessed before this change.
 
-Notifications contain no booking details or action tokens. Invitations, new-message
+Except for the initial clinic invitation's name/clinic/reference fields above,
+notifications contain no booking details or action tokens. Invitations, new-message
 notices and portal OTPs use Secure Mail's environment SMTP credentials and
 support@onesmarter.com. Recipients click the secure-message link, verify their
 email with the normal OTP flow, then read the authorized message and links.
