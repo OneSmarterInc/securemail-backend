@@ -389,8 +389,13 @@ def test_confirmation_action_requires_allowed_origin(configured, settings):
     assert PortalThread.objects.count() == 0
 
 
-@pytest.mark.parametrize("kind", ["invitation", "otp", "reply"])
-def test_selfpay_notifications_use_environment_smtp(configured, settings, monkeypatch, kind):
+@pytest.mark.parametrize("dedicated", [False, True])
+@pytest.mark.parametrize(
+    "kind", ["invitation", "clinic_invitation", "otp", "reply", "confirmation"]
+)
+def test_selfpay_notifications_use_environment_smtp(
+    configured, settings, monkeypatch, kind, dedicated
+):
     from email.utils import parseaddr
     from unittest.mock import Mock
 
@@ -409,6 +414,24 @@ def test_selfpay_notifications_use_environment_smtp(configured, settings, monkey
         )
         job = next(
             j for j in DeliveryJob.objects.all() if mail.payload(j).get("portal_challenge_id")
+        )
+    elif kind == "confirmation":
+        assert (
+            signed(
+                Client(),
+                {
+                    "event_type": "booking_confirmed",
+                    "external_id": "MSP-SYNTHETIC",
+                    "event_id": "smtp-test-confirmation",
+                    "body": "Synthetic confirmation",
+                },
+            ).status_code
+            == 201
+        )
+        job = DeliveryJob.objects.latest("created_at")
+    elif kind == "clinic_invitation":
+        job = next(
+            j for j in DeliveryJob.objects.all() if mail.payload(j)["to"] == "clinic@example.test"
         )
     elif kind == "reply":
         client, _ = login("patient@example.test")
@@ -437,6 +460,14 @@ def test_selfpay_notifications_use_environment_smtp(configured, settings, monkey
     settings.EMAIL_USE_SSL = True
     settings.EMAIL_HOST_USER = "environment-login@example.test"
     settings.EMAIL_HOST_PASSWORD = "synthetic-environment-password"
+    settings.SELFPAY_SMTP_ENABLED = dedicated
+    settings.SELFPAY_EMAIL_HOST = "smtp.ionos.com"
+    settings.SELFPAY_EMAIL_PORT = 587
+    settings.SELFPAY_EMAIL_USE_TLS = True
+    settings.SELFPAY_EMAIL_USE_SSL = False
+    settings.SELFPAY_EMAIL_HOST_USER = "patientcare@onesmarterhealthweb.com"
+    settings.SELFPAY_EMAIL_HOST_PASSWORD = "synthetic-selfpay-password"
+    settings.SELFPAY_FROM_EMAIL = "patientcare@onesmarterhealthweb.com"
     transport = Mock()
     transport.send_messages.return_value = 1
     factory = Mock(return_value=transport)
@@ -444,14 +475,45 @@ def test_selfpay_notifications_use_environment_smtp(configured, settings, monkey
     mail.process_job(job.pk)
     job.refresh_from_db()
     assert job.state == "provider_accepted"
-    assert factory.call_args.kwargs["host"] == settings.EMAIL_HOST
-    assert factory.call_args.kwargs["username"] == settings.EMAIL_HOST_USER
-    assert factory.call_args.kwargs["password"] == settings.EMAIL_HOST_PASSWORD
-    assert factory.call_args.kwargs["use_ssl"] is True
-    assert factory.call_args.kwargs["use_tls"] is False
+    assert factory.call_args.kwargs["host"] == (
+        settings.SELFPAY_EMAIL_HOST if dedicated else settings.EMAIL_HOST
+    )
+    assert factory.call_args.kwargs["username"] == (
+        settings.SELFPAY_EMAIL_HOST_USER if dedicated else settings.EMAIL_HOST_USER
+    )
+    assert factory.call_args.kwargs["password"] == (
+        settings.SELFPAY_EMAIL_HOST_PASSWORD if dedicated else settings.EMAIL_HOST_PASSWORD
+    )
+    assert factory.call_args.kwargs["use_ssl"] is (not dedicated)
+    assert factory.call_args.kwargs["use_tls"] is dedicated
     message = transport.send_messages.call_args.args[0][0]
-    assert parseaddr(message.from_email)[1] == "support@onesmarter.com"
-    assert message.reply_to == ["support@onesmarter.com"]
+    expected_sender = (
+        "patientcare@onesmarterhealthweb.com" if dedicated else "support@onesmarter.com"
+    )
+    assert parseaddr(message.from_email)[1] == expected_sender
+    assert message.reply_to == [expected_sender]
+
+
+def test_queued_portal_smtp_source_is_scoped_and_legacy_otp_supported(configured):
+    from types import SimpleNamespace
+
+    signed(Client(), payload())
+    client = browser()
+    assert (
+        post(client, "code", {"email": "patient@example.test", "source": "selfpay"}).status_code
+        == 200
+    )
+    job = next(j for j in DeliveryJob.objects.all() if mail.payload(j).get("portal_challenge_id"))
+    data = mail.payload(job)
+    assert data["portal_source"] == "selfpay"
+    assert portal.notification_source(data, job) == "selfpay"
+    del data["portal_source"]
+    assert portal.notification_source(data, job) == "selfpay"
+    assert portal.notification_source(data, SimpleNamespace(organization_id=uuid.uuid4())) is None
+    assert (
+        portal.notification_source({"subject": "SelfPay", "to": "patient@example.test"}, job)
+        is None
+    )
 
 
 def test_private_booking_confirmation_visibility_and_retry(configured, settings):

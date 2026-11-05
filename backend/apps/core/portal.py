@@ -93,6 +93,32 @@ def portal_link(thread=None):
     )
 
 
+def notification_source(data, job):
+    """Resolve routing from scoped records, never subjects or recipient domains."""
+    if data.get("portal_thread"):
+        return (
+            PortalThread.objects.filter(
+                pk=data["portal_thread"], organization_id=job.organization_id
+            )
+            .values_list("source", flat=True)
+            .first()
+        )
+    if data.get("portal_challenge_id"):
+        challenge = PortalChallenge.objects.filter(
+            pk=data["portal_challenge_id"], mailbox__organization_id=job.organization_id
+        ).first()
+        if challenge:
+            sources = set(
+                active_memberships(challenge.mailbox).values_list("thread__source", flat=True)
+            )
+            source = data.get("portal_source")
+            if source:
+                return source if source in sources else None
+            # Compatibility for already queued OTPs, only when the source is unambiguous.
+            return next(iter(sources)) if len(sources) == 1 else None
+    return None
+
+
 def delivery_allowed(data, job):
     """Recheck revocation and suppression at send time, including queued mail."""
     if data.get("portal_challenge_id"):
@@ -593,6 +619,7 @@ def request_code(request):
                         "subject": "Your Secure Mail verification code",
                         "body": f"Your one-time code is {code}. It expires in 10 minutes. Please do not reply to this automated email.",
                         "portal_challenge_id": str(challenge.pk),
+                        "portal_source": source,
                     },
                     actor=owner,
                 )

@@ -161,11 +161,17 @@ def process_job(job_id, *, service_ready=None):
             owner = job.conversation.owner if job.conversation else job.actor
             if owner is None or owner.organization_id != job.organization_id:
                 raise senders.SenderUnavailable("No authorized staff SMTP identity")
-            sender, smtp_connection = (
-                smtp_settings.connection(owner)
-                if ordinary
-                else smtp_settings.notification_connection()
-            )
+            if ordinary:
+                sender, smtp_connection = smtp_settings.connection(owner)
+            else:
+                from .portal import notification_source
+
+                source = notification_source(data, job)
+                sender, smtp_connection = (
+                    smtp_settings.notification_connection(source="selfpay")
+                    if source == "selfpay"
+                    else smtp_settings.notification_connection()
+                )
             if ordinary and (
                 not job.actor
                 or sender != job.conversation.sender

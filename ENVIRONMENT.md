@@ -1,5 +1,7 @@
 # Local environment configuration
 
+> SelfPay SMTP update (2026-11-05): enable `SELFPAY_SMTP_ENABLED=true` and configure `SELFPAY_EMAIL_*` plus `SELFPAY_FROM_EMAIL` to route SelfPay secure-portal invitations, OTPs, confirmations and message notifications through their dedicated SMTP account. From and Reply-To both use `SELFPAY_FROM_EMAIL`. Other system mail keeps the general configuration below. See [SELFPAY_SMTP.md](SELFPAY_SMTP.md) for variables and deployment scope.
+
 > Notification sender update (2026-11-05): OTPs, staff/recipient invitations, and protected-message notifications (including SelfPay) send as `OneSmarter Support <support@onesmarter.com>` using backend environment `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` and `EMAIL_USE_SSL`. They do not require personal SMTP credentials or an OrganizationSMTP row. The provider must authorize the configured account to send as support@onesmarter.com. Ordinary Nophi email retains approved personal SMTP credentials. Custody readiness checks remain mandatory. This supersedes earlier owner-credential instructions for notifications.
 
 > Audit storage decision — 2026-11-04: staff/admin activity logs remain in the same

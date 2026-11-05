@@ -110,8 +110,38 @@ def connection(user):
 OTP_SENDER = "support@onesmarter.com"
 
 
-def notification_connection():
+def notification_connection(source=None):
     """System mail uses deployment SMTP credentials, never a staff mailbox."""
+    if source == "selfpay" and settings.SELFPAY_SMTP_ENABLED:
+        from django.core.exceptions import ValidationError
+        from django.core.validators import validate_email
+
+        sender = settings.SELFPAY_FROM_EMAIL
+        try:
+            validate_email(sender)
+        except ValidationError:
+            raise SenderUnavailable("Invalid SelfPay sender") from None
+        if not (
+            settings.SELFPAY_EMAIL_HOST
+            and settings.SELFPAY_EMAIL_HOST_USER
+            and settings.SELFPAY_EMAIL_HOST_PASSWORD
+            and settings.SELFPAY_EMAIL_USE_TLS != settings.SELFPAY_EMAIL_USE_SSL
+            and (
+                (settings.SELFPAY_EMAIL_USE_TLS and settings.SELFPAY_EMAIL_PORT == 587)
+                or (settings.SELFPAY_EMAIL_USE_SSL and settings.SELFPAY_EMAIL_PORT == 465)
+            )
+        ):
+            raise SenderUnavailable("SelfPay notification SMTP is not configured")
+        return sender, SMTPBackend(
+            host=settings.SELFPAY_EMAIL_HOST,
+            port=settings.SELFPAY_EMAIL_PORT,
+            username=settings.SELFPAY_EMAIL_HOST_USER,
+            password=settings.SELFPAY_EMAIL_HOST_PASSWORD,
+            use_tls=settings.SELFPAY_EMAIL_USE_TLS,
+            use_ssl=settings.SELFPAY_EMAIL_USE_SSL,
+            timeout=settings.EMAIL_TIMEOUT,
+            fail_silently=False,
+        )
     if not notification_configured():
         raise SenderUnavailable("Environment notification SMTP is not configured")
     return OTP_SENDER, SMTPBackend(

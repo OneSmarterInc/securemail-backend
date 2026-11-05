@@ -231,6 +231,14 @@ EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "true").lower() == "true"
 EMAIL_USE_SSL = os.environ.get("EMAIL_USE_SSL", "false").lower() == "true"
 EMAIL_TIMEOUT = 20
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "secure@onesmarter.com")
+SELFPAY_SMTP_ENABLED = os.environ.get("SELFPAY_SMTP_ENABLED", "false").lower() == "true"
+SELFPAY_EMAIL_HOST = os.environ.get("SELFPAY_EMAIL_HOST", "smtp.ionos.com")
+SELFPAY_EMAIL_PORT = int(os.environ.get("SELFPAY_EMAIL_PORT", "587"))
+SELFPAY_EMAIL_HOST_USER = os.environ.get("SELFPAY_EMAIL_HOST_USER", "")
+SELFPAY_EMAIL_HOST_PASSWORD = os.environ.get("SELFPAY_EMAIL_HOST_PASSWORD", "")
+SELFPAY_EMAIL_USE_TLS = os.environ.get("SELFPAY_EMAIL_USE_TLS", "true").lower() == "true"
+SELFPAY_EMAIL_USE_SSL = os.environ.get("SELFPAY_EMAIL_USE_SSL", "false").lower() == "true"
+SELFPAY_FROM_EMAIL = os.environ.get("SELFPAY_FROM_EMAIL", "patientcare@onesmarterhealthweb.com")
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_TASK_SERIALIZER = "json"

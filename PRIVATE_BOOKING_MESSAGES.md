@@ -87,3 +87,10 @@ backend and both Vercel frontends. Existing SelfPay backend f1f59a7 already retu
 the links and queues approval events. Existing thread invitations are not resent
 and old threads are not backfilled with patient receipts. Test with a new synthetic
 booking. Production delivery and live approval still require verification.
+
+## Dedicated SelfPay sender
+
+Deployments can now enable the separate SelfPay SMTP route documented in
+[SELFPAY_SMTP.md](SELFPAY_SMTP.md). With that route enabled, SelfPay secure-portal
+invitations, OTPs, replies and approval notices use its configured sender and
+Reply-To instead of the general support sender described above.
