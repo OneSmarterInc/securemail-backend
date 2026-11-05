@@ -1,7 +1,7 @@
 import pytest
 from django.core import mail
 
-from backend.apps.core.email_templates import notification_html
+from backend.apps.core.email_templates import notification_content, notification_html
 from backend.apps.core.mail import process_job
 from backend.apps.core.models import DeliveryJob
 from backend.tests.test_flows import compose
@@ -27,6 +27,53 @@ def test_email_rejects_active_link():
     with pytest.raises(ValueError):
         notification_html(
             {"subject": "test", "body": "test", "link": "javascript:alert(1)"}, protected=True
+        )
+
+
+@pytest.mark.parametrize("kind", ["otp", "booking", "update"])
+def test_selfpay_notifications_share_brand_and_escape_content(kind):
+    data = {
+        "subject": "MySelfPay <script>notification</script>",
+        "body": "Dear <img src=x onerror=alert(1)>\nKind regards,\nOneSmarter Support\nSupporting MySelfPay communications",
+        "link": "https://example.test/recipient/inbox?source=selfpay#thread/synthetic",
+    }
+    if kind == "otp":
+        data.update(portal_challenge_id="synthetic", body="Your one-time code is 123456.")
+        data.pop("link")
+    elif kind == "booking":
+        data["notification_kind"] = "selfpay_clinic_request"
+    original = dict(data)
+    html = notification_html(data, protected=False, source="selfpay")
+    assert "MySelf" in html and "Patient Care" in html
+    assert "#b01b23" in html and "#087f80" not in html
+    assert "OneSmarter Support" not in html
+    assert "<script>" not in html and "<img src=x" not in html
+    assert "About MySelfPay" in html
+    assert "reply securely" not in html
+    if kind == "otp":
+        assert html.count("123456") == 1
+        assert "Your MySelfPay verification code" in html
+    else:
+        assert "&lt;img" in html
+    assert data == original
+    assert "OneSmarter Support" not in notification_content(data, source="selfpay")["body"]
+
+
+def test_payload_brand_hint_cannot_change_other_notification_theme():
+    html = notification_html(
+        {"subject": "Other notification", "body": "Body", "portal_source": "selfpay"},
+        protected=False,
+    )
+    assert "#087f80" in html
+    assert "About MySelfPay" not in html
+
+
+def test_selfpay_rejects_active_link():
+    with pytest.raises(ValueError):
+        notification_html(
+            {"subject": "test", "body": "test", "link": "javascript:alert(1)"},
+            protected=False,
+            source="selfpay",
         )
 
 

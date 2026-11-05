@@ -9,7 +9,21 @@ from django.template import Context, Engine
 _engine = Engine(dirs=[str(Path(__file__).parent / "templates")], autoescape=True)
 
 
-def notification_html(data: dict, *, protected: bool) -> str:
+def notification_content(data: dict, *, source: str | None = None) -> dict:
+    """Apply service branding after the worker resolves the authorized source."""
+    result = dict(data)
+    if source == "selfpay":
+        if result.get("portal_challenge_id"):
+            result["subject"] = "Your MySelfPay verification code"
+        result["body"] = result["body"].replace(
+            "Kind regards,\nOneSmarter Support\nSupporting MySelfPay communications",
+            "Kind regards,\nPatient Care\nMySelfPay",
+        )
+    return result
+
+
+def notification_html(data: dict, *, protected: bool, source: str | None = None) -> str:
+    data = notification_content(data, source=source)
     link = data.get("link", "")
     if link:
         parsed = urlsplit(link)
@@ -29,7 +43,10 @@ def notification_html(data: dict, *, protected: bool) -> str:
         action = "Set up your account"
     elif data.get("notification_kind") == "selfpay_clinic_request":
         action = "Review appointment request"
-    return _engine.get_template("notification.html").render(
+    template = "selfpay_notification.html" if source == "selfpay" else "notification.html"
+    if source == "selfpay" and action == "Continue to OneSmarter":
+        action = "View in Secure Mail"
+    return _engine.get_template(template).render(
         Context(
             {
                 "title": data["subject"],

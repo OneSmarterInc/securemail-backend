@@ -249,7 +249,7 @@ def notify(participant, *, initial=False, booking_names=None):
                 "one-time code before accessing the conversation.\n\n"
                 "This request does not confirm an appointment. Your clinic must review "
                 "and complete the confirmation process.\n\n"
-                "Kind regards,\nOneSmarter Support\nSupporting MySelfPay communications"
+                "Kind regards,\nPatient Care\nMySelfPay"
             ),
         )
     queue_mail(

@@ -11,7 +11,7 @@ from django.db import DatabaseError, transaction
 from django.utils import timezone
 
 from . import crypto, document_service, senders, smtp_settings, storage
-from .email_templates import notification_html
+from .email_templates import notification_content, notification_html
 from .models import (
     Attachment,
     DeliveryJob,
@@ -180,6 +180,7 @@ def process_job(job_id, *, service_ready=None):
                 or job.actor.organization_id != job.organization_id
             ):
                 raise senders.SenderUnavailable("Sender authority was withdrawn")
+            data = notification_content(data, source=source)
             text = data["body"] + ("\n\n" + data["link"] if data.get("link") else "")
             if job.conversation and job.conversation.protected:
                 text += "\n\nDo not reply. Please respond through the secure portal."
@@ -205,7 +206,9 @@ def process_job(job_id, *, service_ready=None):
             if not job.conversation or job.conversation.protected:
                 message.attach_alternative(
                     notification_html(
-                        data, protected=bool(job.conversation and job.conversation.protected)
+                        data,
+                        protected=bool(job.conversation and job.conversation.protected),
+                        source=source,
                     ),
                     "text/html",
                 )

@@ -493,6 +493,10 @@ def test_selfpay_notifications_use_environment_smtp(
     assert parseaddr(message.from_email)[1] == expected_sender
     assert parseaddr(message.from_email)[0] == "Patient Care"
     assert message.reply_to == [expected_sender]
+    assert message.alternatives[0].mimetype == "text/html"
+    assert "#b01b23" in message.alternatives[0].content
+    assert "About MySelfPay" in message.alternatives[0].content
+    assert "OneSmarter Support" not in message.body
 
 
 def test_queued_portal_smtp_source_is_scoped_and_legacy_otp_supported(configured):
