@@ -617,3 +617,64 @@ def test_clinic_invitation_copy_excludes_timing_and_escapes_names(configured, se
     assert "&lt;script&gt;" in html
     assert signed(Client(), data).status_code == 200
     assert DeliveryJob.objects.count() == 2
+
+
+def test_selfpay_center_only_delivery_has_no_patient_mailbox_or_replies(configured, settings):
+    settings.SECURE_MAIL_INTEGRATIONS["selfpay"].update(
+        suppress_provider_notifications=False,
+        provider_action_origins=["https://selfpay.example.test"],
+    )
+    data = payload("MSP-CENTER-ONLY")
+    data["delivery_mode"] = "provider_only"
+    data["participants"] = [data["participants"][1]]
+    action = {
+        "url": "https://selfpay.example.test/#clinic/MSP-CENTER-ONLY/private-token",
+        "expires_at": time.time() + 3600,
+    }
+    data["provider_action"] = action
+    response = signed(Client(), data)
+    assert response.status_code == 201, response.content
+    ident = response.json()["id"]
+    assert response.json()["provider_notification"] == "queued"
+    assert signed(Client(), data).json()["id"] == ident
+    assert PortalParticipant.objects.count() == 1
+    assert PortalMailbox.objects.count() == 1
+    assert PortalMessage.objects.count() == 1
+    assert PortalParticipant.objects.get().role == "provider"
+    jobs = [mail.payload(job) for job in DeliveryJob.objects.all()]
+    assert len(jobs) == 1 and jobs[0]["to"] == "clinic@example.test"
+    assert "private-token" not in json.dumps(jobs)
+    assert "patient@example.test" not in json.dumps(jobs)
+    center, _ = login("clinic@example.test")
+    detail = center.get("/recipient-api/inbox/threads/" + ident)
+    assert detail.status_code == 200
+    assert detail.json()["provider_action"] == action
+    assert detail.json()["read_only"] is True
+    assert (
+        post(
+            center,
+            "threads/" + ident,
+            {"body": "No reply should be accepted"},
+            HTTP_IDEMPOTENCY_KEY="synthetic-reply-12345",
+        ).status_code
+        == 403
+    )
+    assert PortalMessage.objects.count() == 1
+    outsider = browser()
+    assert outsider.get("/recipient-api/inbox/threads/" + ident).status_code == 401
+
+
+@pytest.mark.parametrize("variant", ["requester", "two_people", "no_action", "bad_mode"])
+def test_center_only_rejects_invalid_contract(configured, variant):
+    data = payload("MSP-REJECT-CENTER")
+    data["delivery_mode"] = "provider_only"
+    data["participants"] = [data["participants"][1]]
+    if variant == "requester":
+        data["participants"][0]["role"] = "requester"
+    elif variant == "two_people":
+        data["participants"] = payload()["participants"]
+    elif variant == "bad_mode":
+        data["delivery_mode"] = "unknown"
+    assert signed(Client(), data).status_code == 400
+    assert PortalThread.objects.count() == 0
+    assert DeliveryJob.objects.count() == 0

@@ -245,7 +245,7 @@ def notify(participant, *, initial=False, booking_names=None):
                 "appointments directly with participating clinics.\n\n"
                 f"MySelfPay booking reference: {thread.external_id}\n\n"
                 "Please continue to OneSmarter Secure Mail to review the full request "
-                "and respond securely. You will be asked to verify your email using a "
+                "and review the approval action. You will be asked to verify your email using a "
                 "one-time code before accessing the conversation.\n\n"
                 "This request does not confirm an appointment. Your clinic must review "
                 "and complete the confirmation process.\n\n"
@@ -273,9 +273,15 @@ def create_thread(request):
         raise Problem("Unsupported integration event.")
     external_id = field(data, "external_id", 100)
     title, body = field(data, "subject", 200), field(data, "body", 16000)
+    mode = data.get("delivery_mode", "two_party")
+    if mode not in ("two_party", "provider_only") or (
+        mode == "provider_only" and source != "selfpay"
+    ):
+        raise Problem("Invalid delivery mode.")
+    provider_only = mode == "provider_only"
     people = data.get("participants")
-    if not isinstance(people, list) or len(people) != 2:
-        raise Problem("Exactly two participants are required.")
+    if not isinstance(people, list) or len(people) != (1 if provider_only else 2):
+        raise Problem("Invalid participant count.")
     normalized = []
     for person in people:
         if not isinstance(person, dict) or person.get("role") not in {"requester", "provider"}:
@@ -287,11 +293,16 @@ def create_thread(request):
                 "role": person["role"],
             }
         )
-    if {p["role"] for p in normalized} != {"requester", "provider"} or normalized[0][
+    if provider_only:
+        if normalized[0]["role"] != "provider":
+            raise Problem("A provider mailbox is required.")
+    elif {p["role"] for p in normalized} != {"requester", "provider"} or normalized[0][
         "email"
     ] == normalized[1]["email"]:
         raise Problem("Distinct requester and provider mailboxes are required.")
     provider_action = data.get("provider_action")
+    if provider_only and provider_action is None:
+        raise Problem("A clinic approval action is required.")
     if provider_action is not None:
         if not isinstance(provider_action, dict):
             raise Problem("Invalid clinic action.")
@@ -317,6 +328,8 @@ def create_thread(request):
         "body": body,
         "participants": sorted(normalized, key=lambda p: p["role"]),
     }
+    if provider_only:
+        canonical["delivery_mode"] = mode
     if provider_action is not None:
         canonical["provider_action"] = provider_action
     fingerprint = keyed(json.dumps(canonical, sort_keys=True), purpose="portal-request")
@@ -345,6 +358,8 @@ def create_thread(request):
             fingerprint=fingerprint,
         )
         metadata = {"subject": title, "source_name": config.get("name", source), "names": {}}
+        if provider_only:
+            metadata["delivery_mode"] = mode
         if provider_action is not None:
             metadata["provider_action"] = provider_action
         thread.metadata_ciphertext = ""
@@ -363,7 +378,10 @@ def create_thread(request):
                 participant,
                 initial=True,
                 booking_names=(
-                    next(p["name"] for p in normalized if p["role"] == "requester"),
+                    next(
+                        (p["name"] for p in normalized if p["role"] == "requester"),
+                        "MySelfPay user",
+                    ),
                     next(p["name"] for p in normalized if p["role"] == "provider"),
                 ),
             )
@@ -381,7 +399,7 @@ def create_thread(request):
             body, owner.organization_id, "portal-message", message_context_id(message)
         )
         message.save()
-        if source == "selfpay":
+        if source == "selfpay" and not provider_only:
             clinic = next(p["name"] for p in normalized if p["role"] == "provider")
             receipt = PortalMessage(
                 thread=thread,
@@ -776,6 +794,12 @@ def thread_detail(request, ident):
         integration(thread.source)
         info = metadata(thread)
         if request.method == "POST":
+            if info.get("delivery_mode") == "provider_only":
+                raise Problem(
+                    "Use the clinic approval action in MySelfPay; replies are unavailable.",
+                    "read_only",
+                    403,
+                )
             body = field(request.data, "body", 16000)
             key = request.headers.get("Idempotency-Key", "")
             if not re.fullmatch(r"[A-Za-z0-9_-]{16,100}", key):
@@ -892,6 +916,7 @@ def thread_detail(request, ident):
                 if thread.source == "selfpay"
                 else None,
                 "provider_action": provider_action_result,
+                "read_only": info.get("delivery_mode") == "provider_only",
                 "subject": info["subject"],
                 "participants": participants,
                 "request_summary": request_summary,
