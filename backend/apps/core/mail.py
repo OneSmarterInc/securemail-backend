@@ -158,6 +158,7 @@ def process_job(job_id, *, service_ready=None):
             state = "development_delivered"
         else:
             ordinary = bool(job.conversation and not job.conversation.protected)
+            source = None
             owner = job.conversation.owner if job.conversation else job.actor
             if owner is None or owner.organization_id != job.organization_id:
                 raise senders.SenderUnavailable("No authorized staff SMTP identity")
@@ -191,7 +192,7 @@ def process_job(job_id, *, service_ready=None):
                             organization_id=owner.organization_id
                         ).sender_name
                         if ordinary
-                        else "OneSmarter Support",
+                        else ("Patient Care" if source == "selfpay" else "OneSmarter Support"),
                         sender,
                     )
                 ),

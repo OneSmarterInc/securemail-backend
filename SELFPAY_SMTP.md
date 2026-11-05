@@ -14,6 +14,8 @@ SELFPAY_EMAIL_USE_SSL=false
 SELFPAY_FROM_EMAIL=patientcare@onesmarterhealthweb.com
 ```
 
+The From display name is `Patient Care` for SelfPay portal mail. Other system
+mail retains `OneSmarter Support`. Already delivered emails are not changed.
 From and Reply-To both use SELFPAY_FROM_EMAIL. SMTP login uses the full mailbox
 address. IONOS documents `smtp.ionos.com`, port 587 with STARTTLS (or 465 with
 SSL/TLS): https://www.ionos.com/help/email/general-topics/ionos-mail-server-details-for-imap-pop3-and-smtp/

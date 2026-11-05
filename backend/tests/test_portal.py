@@ -491,6 +491,7 @@ def test_selfpay_notifications_use_environment_smtp(
         "patientcare@onesmarterhealthweb.com" if dedicated else "support@onesmarter.com"
     )
     assert parseaddr(message.from_email)[1] == expected_sender
+    assert parseaddr(message.from_email)[0] == "Patient Care"
     assert message.reply_to == [expected_sender]
 
 
