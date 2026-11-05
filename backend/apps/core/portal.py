@@ -333,15 +333,14 @@ def create_thread(request):
                 suppress_notifications=person["role"] == "provider"
                 and config.get("suppress_provider_notifications", True),
             )
-            if source != "selfpay" or person["role"] == "provider":
-                notify(
-                    participant,
-                    initial=True,
-                    booking_names=(
-                        next(p["name"] for p in normalized if p["role"] == "requester"),
-                        next(p["name"] for p in normalized if p["role"] == "provider"),
-                    ),
-                )
+            notify(
+                participant,
+                initial=True,
+                booking_names=(
+                    next(p["name"] for p in normalized if p["role"] == "requester"),
+                    next(p["name"] for p in normalized if p["role"] == "provider"),
+                ),
+            )
         thread.metadata_ciphertext = encrypt(
             metadata, owner.organization_id, "portal-thread", thread.pk
         )
@@ -356,6 +355,23 @@ def create_thread(request):
             body, owner.organization_id, "portal-message", message_context_id(message)
         )
         message.save()
+        if source == "selfpay":
+            clinic = next(p["name"] for p in normalized if p["role"] == "provider")
+            receipt = PortalMessage(
+                thread=thread,
+                audience="requester",
+                submission_key="initial_requester",
+                fingerprint=fingerprint,
+            )
+            receipt.body_ciphertext = encrypt(
+                f"Your appointment request to {clinic} has been received through MySelfPay.\n"
+                f"MySelfPay booking reference: {external_id}\n"
+                "Your clinic will review the request. The current approval status is shown above.",
+                owner.organization_id,
+                "portal-message",
+                message_context_id(receipt),
+            )
+            receipt.save()
         audit(owner.organization, owner, "integration.thread_created", "portal_thread", thread.pk)
     return Response(
         {
@@ -483,7 +499,8 @@ def message_output(message, thread, info, mailbox_id):
         "body": content["body"] if isinstance(content, dict) else content,
         "actions": actions,
         "audience": message.audience,
-        "initial": message.sender_id is None and message.submission_key == "initial",
+        "initial": message.sender_id is None
+        and message.submission_key in {"initial", "initial_requester"},
         "sender": info["names"].get(str(message.sender_id), info["source_name"]),
         "mine": message.sender_id == mailbox_id,
         "system": message.sender_id is None,
@@ -784,7 +801,7 @@ def thread_detail(request, ident):
         batch = list(messages[:51])
         output = [message_output(m, thread, info, session.mailbox_id) for m in reversed(batch[:50])]
         if not before:
-            member.last_read = thread.updated_at
+            member.last_read = batch[0].created_at if batch else thread.updated_at
             member.save(update_fields=["last_read"])
         audit(
             thread.organization_id,
@@ -809,8 +826,13 @@ def thread_detail(request, ident):
                 revoked_at=None, mailbox__disabled_at=None
             ).select_related("mailbox")
         ]
+        initial_key = (
+            "initial_requester"
+            if thread.source == "selfpay" and member.role == "requester"
+            else "initial"
+        )
         initial = (
-            visible_messages(thread, member).filter(sender=None, submission_key="initial").first()
+            visible_messages(thread, member).filter(sender=None, submission_key=initial_key).first()
         )
         request_summary = (
             decrypt(
@@ -833,6 +855,15 @@ def thread_detail(request, ident):
         return Response(
             {
                 "id": str(thread.pk),
+                "booking_status": (
+                    "approved"
+                    if thread.messages.filter(
+                        sender=None, submission_key__startswith="confirmation:"
+                    ).exists()
+                    else "requested"
+                )
+                if thread.source == "selfpay"
+                else None,
                 "provider_action": provider_action_result,
                 "subject": info["subject"],
                 "participants": participants,

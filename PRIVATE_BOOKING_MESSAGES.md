@@ -11,7 +11,7 @@ name is the explicitly requested exception to the earlier generic-email policy.
 It uses the existing support@onesmarter.com environment SMTP transport. Other
 notifications and OTPs retain their existing wording. Already queued payloads
 and already delivered invitations are not rewritten or automatically resent.
-No database migration, SelfPay deployment or frontend deployment is required.
+The wording-only release needed no migration. The subsequent approval-flow release below also updates both frontends.
 
 Booking requests are created after verified submission, before clinic approval.
 The initial request (including preferred appointment windows and the existing
@@ -49,7 +49,7 @@ SelfPay's separate account/clinic authentication remains unchanged.
    EMAIL_HOST_PASSWORD, EMAIL_USE_TLS/EMAIL_USE_SSL for the provider authorized
    to send as support@onesmarter.com. Do not copy credentials into SelfPay for
    these messages. Restart Secure Mail API/outbox after environment changes.
-7. Verify with synthetic bookings: clinic alone receives the initial notice;
+7. Verify with synthetic bookings: both clinic and patient receive initial notices;
    patient alone sees the confirmation; replies are shared; each recipient must
    complete OTP. Check both portal views and retry a delivery without duplicates.
 
@@ -60,3 +60,30 @@ Links retain their existing expiry; a message remains after its action expires.
 A 'scheduled' status does not invent an exact appointment time.
 
 Local validation is not evidence of a production deployment or live SMTP delivery.
+
+## Approval-flow update — 2026-11-05
+
+New threads queue an initial invitation to each participant. The patient receives
+an encrypted, requester-only receipt containing clinic name and booking reference;
+the provider retains the detailed private request and approval action. Neither
+participant can read the other's private system message. Ordinary replies remain
+shared. No appointment timing appears in the initial notification email.
+
+Authenticated thread details expose `booking_status` (`requested` / `approved`).
+Approval derives from the authenticated, idempotent SelfPay confirmation event,
+not browser input. Both participants see the status; the confirmation body and
+patient tracking link remain requester-only. Worker retries can delay the status
+until the confirmation event reaches Secure Mail. Rejection/cancellation status
+synchronization is outside this change.
+
+SelfPay's patient receipt and authenticated clinic result show Open secure chat
+using the existing backend link. Clinic details refresh every 15 seconds while
+verified. Opening the clinic verification screen automatically requests one OTP;
+resend remains visible and disabled for the server cooldown (60 seconds default).
+Existing OTP verification, session expiry and rate limits remain enforced.
+
+This release has no new schema migration or key rotation. Deploy Secure Mail
+backend and both Vercel frontends. Existing SelfPay backend f1f59a7 already returns
+the links and queues approval events. Existing thread invitations are not resent
+and old threads are not backfilled with patient receipts. Test with a new synthetic
+booking. Production delivery and live approval still require verification.
