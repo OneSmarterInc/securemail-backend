@@ -11,6 +11,7 @@ from datetime import timedelta
 from urllib.parse import quote, urlsplit
 
 from django.conf import settings
+from django.core import signing
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -91,6 +92,16 @@ def portal_link(thread=None):
         + "/inbox"
         + (f"?source={quote(thread.source)}#thread/{thread.pk}" if thread else "")
     )
+
+
+def invitation_link(participant):
+    # Signed identifiers select a recipient, never authorize inbox access.
+    # No email or personal information is embedded in the URL.
+    token = signing.dumps(
+        {"mailbox": str(participant.mailbox_id), "thread": str(participant.thread_id)},
+        salt="portal-invitation-v1",
+    )
+    return settings.RECIPIENT_PUBLIC_URL.rstrip("/") + "/inbox#invite/" + token
 
 
 def notification_source(data, job):
@@ -229,7 +240,7 @@ def notify(participant, *, initial=False, booking_names=None):
         "to": address,
         "subject": "Your secure appointment conversation" if initial else "New secure message",
         "body": "Open Secure Mail and verify your email to view your conversation. Please do not reply to this automated email.",
-        "link": portal_link(thread),
+        "link": invitation_link(participant),
         "portal_thread": str(thread.pk),
         "portal_mailbox": str(participant.mailbox_id),
     }
@@ -603,12 +614,53 @@ def session_status(request):
 
 @endpoint(["POST"])
 def request_code(request):
-    address = email(request.data.get("email"))
+    invitation = request.data.get("invitation")
+    participant = None
+    if invitation is not None:
+        rate_limit(request, "portal-invitation", maximum=30, seconds=300)
+        try:
+            if not isinstance(invitation, str) or len(invitation) > 1024:
+                raise ValueError
+            identity = signing.loads(invitation, salt="portal-invitation-v1")
+            mailbox = PortalMailbox.objects.get(pk=identity["mailbox"], disabled_at=None)
+            participant = active_memberships(mailbox).get(thread_id=identity["thread"])
+        except (
+            signing.BadSignature,
+            ValueError,
+            KeyError,
+            TypeError,
+            PortalMailbox.DoesNotExist,
+            PortalParticipant.DoesNotExist,
+        ):
+            raise Problem(
+                "This invitation is unavailable.", "invitation_unavailable", 400
+            ) from None
+        address = decrypt(
+            mailbox.email_ciphertext, mailbox.organization_id, "portal-email", mailbox.pk
+        )
+        source = participant.thread.source
+    else:
+        address = email(request.data.get("email"))
+        source = field(request.data, "source", 64)
     rate_limit(request, "portal-code-hour", address, maximum=10, seconds=3600)
     rate_limit(request, "portal-code-day", address, maximum=30, seconds=86400)
     # Public tenant selection is an opaque integration ID, never caller-provided org authority.
-    source = field(request.data, "source", 64)
     owner = owner_for(source)
+    if participant and participant.thread.organization_id != owner.organization_id:
+        raise Problem("This invitation is unavailable.", "invitation_unavailable", 400)
+    bound = request.session.get("portal_invitation")
+    if not participant and bound:
+        raise Problem("Use the original invitation to request a code.", "invitation_required", 400)
+    # Beginning a new verification must never leave an older mailbox authenticated.
+    prior_session = request.session.pop("portal_session", None)
+    if prior_session:
+        PortalSession.objects.filter(pk=prior_session).update(revoked_at=timezone.now())
+    if participant:
+        request.session["portal_invitation"] = {
+            "mailbox": str(participant.mailbox_id),
+            "thread": str(participant.thread_id),
+        }
+    extra = {"email": address, "thread_id": str(participant.thread_id)} if participant else {}
     challenge_id = uuid.uuid4()
     with transaction.atomic():
         lock_organization(owner.organization)
@@ -618,6 +670,26 @@ def request_code(request):
             disabled_at=None,
         ).first()
         if mailbox and active_memberships(mailbox).filter(thread__source=source).exists():
+            current = PortalChallenge.objects.filter(
+                pk=request.session.get("portal_challenge"),
+                mailbox=mailbox,
+                consumed_at=None,
+                expires_at__gt=timezone.now(),
+                attempts__lt=5,
+            ).first()
+            if current and (
+                request.data.get("automatic") is True
+                or (timezone.now() - current.created_at).total_seconds() < 60
+            ):
+                remaining = max(0, 60 - int((timezone.now() - current.created_at).total_seconds()))
+                return Response(
+                    {
+                        "challenge_id": str(current.pk),
+                        "sent": True,
+                        "resend_after": remaining,
+                        **extra,
+                    }
+                )
             latest = PortalChallenge.objects.filter(mailbox=mailbox).order_by("-created_at").first()
             if not latest or (timezone.now() - latest.created_at).total_seconds() >= 60:
                 PortalChallenge.objects.filter(mailbox=mailbox, consumed_at=None).update(
@@ -650,7 +722,7 @@ def request_code(request):
                 )
     # Bind even decoy challenges to the requesting browser; never reveal mailbox existence.
     request.session["portal_challenge"] = str(challenge_id)
-    return Response({"challenge_id": str(challenge_id), "sent": True, "resend_after": 60})
+    return Response({"challenge_id": str(challenge_id), "sent": True, "resend_after": 60, **extra})
 
 
 @endpoint(["POST"])
@@ -674,6 +746,14 @@ def verify_code(request):
                 and challenge.attempts < 5
                 and not challenge.mailbox.disabled_at
             ):
+                bound = request.session.get("portal_invitation")
+                if bound and (
+                    bound["mailbox"] != str(challenge.mailbox_id)
+                    or not active_memberships(challenge.mailbox)
+                    .filter(thread_id=bound["thread"])
+                    .exists()
+                ):
+                    raise Problem("This invitation is unavailable.", "invitation_unavailable", 400)
                 challenge.attempts += 1
                 accepted = hmac.compare_digest(
                     challenge.verifier, keyed(f"portal:{ident}:{code}", purpose="otp")

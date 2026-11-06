@@ -682,3 +682,118 @@ def test_center_only_rejects_invalid_contract(configured, variant):
     assert signed(Client(), data).status_code == 400
     assert PortalThread.objects.count() == 0
     assert DeliveryJob.objects.count() == 0
+
+
+def test_invitation_prefill_is_bound_and_refresh_reuses_browser_challenge(configured):
+    signed(Client(), payload())
+    participant = PortalParticipant.objects.get(role="provider")
+    link = portal.invitation_link(participant)
+    assert "@" not in link
+    token = link.split("#invite/")[1]
+    client = browser()
+    before = DeliveryJob.objects.count()
+    response = post(
+        client,
+        "code",
+        {
+            "invitation": token,
+            "automatic": True,
+            "email": "attacker@example.test",
+            "source": "wrong",
+        },
+    )
+    assert response.status_code == 200, response.content
+    assert response.json()["email"] == "clinic@example.test"
+    assert response.json()["thread_id"] == str(participant.thread_id)
+    assert DeliveryJob.objects.count() == before + 1
+    assert client.get("/recipient-api/inbox/threads").status_code == 401
+    again = post(client, "code", {"invitation": token, "automatic": True})
+    assert again.json()["challenge_id"] == response.json()["challenge_id"]
+    assert DeliveryJob.objects.count() == before + 1
+    job = mail.payload(DeliveryJob.objects.latest("created_at"))
+    code = re.search(r"code is (\d{6})", job["body"])[1]
+    other = browser()
+    assert post(other, "verify", {"code": code}).status_code == 400
+    assert post(client, "verify", {"code": code}).status_code == 200
+
+
+@pytest.mark.parametrize("invalid", ["tampered", "revoked", "disabled", "thread_revoked"])
+def test_invitation_rejects_invalid_or_revoked_recipient(configured, invalid):
+    signed(Client(), payload())
+    participant = PortalParticipant.objects.get(role="provider")
+    token = portal.invitation_link(participant).split("#invite/")[1]
+    if invalid == "tampered":
+        token += "x"
+    elif invalid == "revoked":
+        participant.revoked_at = timezone.now()
+        participant.save()
+    elif invalid == "disabled":
+        participant.mailbox.disabled_at = timezone.now()
+        participant.mailbox.save()
+    else:
+        participant.thread.revoked_at = timezone.now()
+        participant.thread.save()
+    before = DeliveryJob.objects.count()
+    client = browser()
+    assert post(client, "code", {"invitation": token}).status_code == 400
+    assert DeliveryJob.objects.count() == before
+
+
+def test_invitation_requires_csrf_and_get_does_not_send(configured):
+    signed(Client(), payload())
+    token = portal.invitation_link(PortalParticipant.objects.get(role="provider")).split(
+        "#invite/"
+    )[1]
+    client = Client(enforce_csrf_checks=True)
+    before = DeliveryJob.objects.count()
+    assert client.get("/recipient-api/inbox/code", {"invitation": token}).status_code == 405
+    assert (
+        client.post(
+            "/recipient-api/inbox/code",
+            json.dumps({"invitation": token}),
+            content_type="application/json",
+        ).status_code
+        == 403
+    )
+    assert DeliveryJob.objects.count() == before
+
+
+def test_invitation_cannot_switch_mailbox_and_rechecks_revocation(configured):
+    signed(Client(), payload())
+    participant = PortalParticipant.objects.get(role="provider")
+    token = portal.invitation_link(participant).split("#invite/")[1]
+    client, _ = login("patient@example.test")
+    old_session = PortalSession.objects.get().pk
+    assert post(client, "code", {"invitation": token}).status_code == 200
+    assert PortalSession.objects.get(pk=old_session).revoked_at
+    assert client.get("/recipient-api/inbox/threads").status_code == 401
+    assert (
+        post(client, "code", {"email": "patient@example.test", "source": "selfpay"}).status_code
+        == 400
+    )
+    job = mail.payload(DeliveryJob.objects.latest("created_at"))
+    code = re.search(r"code is (\d{6})", job["body"])[1]
+    participant.revoked_at = timezone.now()
+    participant.save()
+    assert post(client, "verify", {"code": code}).status_code == 400
+
+
+def test_other_verified_clinic_cannot_read_or_post_to_linked_thread(configured):
+    target = signed(Client(), payload()).json()["id"]
+    signed(Client(), payload("MSP-OTHER", provider="other@example.test"))
+    client, _ = login("other@example.test")
+    assert client.get("/recipient-api/inbox/threads/" + target).status_code == 404
+    assert post(client, "threads/" + target, {"body": "unauthorized"}).status_code == 404
+    assert target not in {
+        row["id"] for row in client.get("/recipient-api/inbox/threads").json()["results"]
+    }
+
+
+def test_manual_verification_clears_old_authenticated_mailbox(configured):
+    signed(Client(), payload())
+    client, _ = login("clinic@example.test")
+    assert (
+        post(client, "code", {"email": "unknown@example.test", "source": "selfpay"}).status_code
+        == 200
+    )
+    assert client.get("/recipient-api/inbox/threads").status_code == 401
