@@ -3,6 +3,15 @@
 Use an API key from **Access > API keys** to call Secure Mail from your server.
 This API sends encrypted, protected messages. It is not an ordinary SMTP relay.
 
+## Choose a profile guide
+
+- [Secure Mail / custom partner branding](PUBLIC_API_SECUREMAIL.md)
+- [SelfPay / established Patient Care](PUBLIC_API_SELFPAY.md)
+
+Profile controls notification/OTP branding and delivery configuration; scopes
+control API access. Booking routes always use the SelfPay workflow. Template
+routes are callable with either profile, but SelfPay message sends reject template_id.
+
 ## Create and protect a key
 
 1. Sign in to the staff portal as an active, MFA-enrolled administrator with
