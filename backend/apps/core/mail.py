@@ -181,6 +181,27 @@ def process_job(job_id, *, service_ready=None):
             ):
                 raise senders.SenderUnavailable("Sender authority was withdrawn")
             data = notification_content(data, source=source)
+            from .api_presentation import presentation
+
+            design = presentation(job.conversation) if job.conversation else {}
+            custom_template = (
+                data.get("api_notification_template", design) if source != "selfpay" else None
+            )
+            custom_html = None
+            if custom_template:
+                import re
+
+                from .api_email_templates import render_notification, render_otp
+
+                if data.get("challenge_id") and custom_template.get("otp_html"):
+                    match = re.search(r"one-time code is (\d{6})\.", data["body"])
+                    if not match:
+                        raise ValueError("Missing verification code")
+                    custom_html = render_otp(custom_template, match.group(1))
+                    data["body"] = custom_template["otp_text"] + "\n\n" + data["body"]
+                elif data.get("link") and custom_template.get("html"):
+                    custom_html = render_notification(custom_template, data["link"])
+                    data["body"] = custom_template["text"]
             text = data["body"] + ("\n\n" + data["link"] if data.get("link") else "")
             if job.conversation and job.conversation.protected:
                 text += "\n\nDo not reply. Please respond through the secure portal."
@@ -205,7 +226,8 @@ def process_job(job_id, *, service_ready=None):
             # Ordinary email retains its existing text/attachment behavior.
             if not job.conversation or job.conversation.protected:
                 message.attach_alternative(
-                    notification_html(
+                    custom_html
+                    or notification_html(
                         data,
                         protected=bool(job.conversation and job.conversation.protected),
                         source=source,

@@ -290,6 +290,16 @@ def detail(conversation, grant=None, request=None):
         grant is None or grant.kind != "bcc"
     )
     data["viewer_email"] = grant.email if grant else conversation.sender
+    if grant:
+        from .api_presentation import recipient_theme, replies_allowed
+
+        data["theme"] = recipient_theme(conversation)
+        data["can_reply"] = replies_allowed(conversation)
+        from .models import ApiMessage
+
+        data["api_inbox"] = ApiMessage.objects.filter(conversation=conversation).exists()
+        if not data["can_reply"]:
+            data["can_reply_all"] = False
     data["next_messages_cursor"] = next_cursor
     data["messages"] = [
         {
@@ -652,6 +662,10 @@ def revoke(request, ident):
 
 def save_reply(request, conversation, data, *, user=None, grant=None):
     document_service.require_ready()
+    if grant:
+        from .api_presentation import require_recipient_reply
+
+        require_recipient_reply(conversation)
     from .attachment_preparation import prepare
 
     prepared = prepare(data["attachments"], user=user, grant=grant)
@@ -671,6 +685,7 @@ def save_reply(request, conversation, data, *, user=None, grant=None):
         if grant:
             recipient(request)
             active_grant(RecipientGrant.objects.select_related("conversation").get(pk=grant.pk))
+            require_recipient_reply(conversation)
         actor = f"staff:{user.pk}" if user else f"recipient:{grant.pk}"
         existing, record = idempotency(
             request, conversation.organization, actor, f"reply:{conversation.pk}", data
@@ -835,10 +850,15 @@ def landing(request):
     rate_limit(request, "landing", maximum=60)
     grant = token_grant(data["token"])
     local, domain = grant.email.split("@")
+    from .api_presentation import recipient_theme
+    from .models import ApiMessage
+
     return Response(
         {
             "organization": grant.conversation.organization.name,
             "recipient": local[:1] + "***@" + domain,
+            "theme": recipient_theme(grant.conversation),
+            "auto_send_code": ApiMessage.objects.filter(conversation=grant.conversation).exists(),
         }
     )
 
@@ -864,9 +884,24 @@ def verification_grant(request, token):
 def issue_code(request):
     data = validate(InvitationToken, request.data)
     grant = verification_grant(request, data["token"])
-    from .smtp_settings import configured
+    from .models import ApiMessage
+    from .senders import SenderUnavailable
+    from .smtp_settings import configured, notification_connection
 
-    if settings.MAIL_PROVIDER == "smtp" and not configured(grant.conversation.owner):
+    binding = (
+        ApiMessage.objects.select_related("key").filter(conversation=grant.conversation).first()
+    )
+    sender_ready = True
+    if settings.MAIL_PROVIDER == "smtp":
+        if binding:
+            try:
+                # Builds a transport but does not open a network connection.
+                notification_connection(source=binding.key.notification_profile)
+            except SenderUnavailable:
+                sender_ready = False
+        else:
+            sender_ready = configured(grant.conversation.owner)
+    if not sender_ready:
         raise Problem(
             "Verification email is unavailable. Ask the sender to configure their SMTP credentials.",
             "otp_sender_unavailable",
@@ -888,6 +923,9 @@ def issue_code(request):
         challenge = OTPChallenge(grant=grant, expires_at=timezone.now() + timedelta(minutes=10))
         challenge.verifier = keyed(f"otp:{challenge.pk}:{code}", purpose="otp")
         challenge.save()
+        from .api_presentation import presentation
+
+        otp_presentation = presentation(grant.conversation)
         queue_mail(
             grant.conversation.organization,
             {
@@ -895,6 +933,7 @@ def issue_code(request):
                 "subject": "Your OneSmarter verification code",
                 "body": f"Your one-time code is {code}. It expires in 10 minutes. Do not share it.",
                 "challenge_id": str(challenge.pk),
+                **({"api_notification_template": otp_presentation} if binding else {}),
             },
             conversation=grant.conversation,
             grant=grant,
@@ -1002,6 +1041,11 @@ def recipient_logout(request):
 def upload_for(request, *, user=None, grant=None, captured_metadata=None):
     from . import evidence
 
+    if grant:
+        from .api_presentation import require_recipient_reply
+
+        require_recipient_reply(grant.conversation)
+
     provenance = captured_metadata or evidence.source_metadata(request)
     document_service.require_ready()
     org = user.organization if user else grant.conversation.organization
@@ -1016,6 +1060,8 @@ def upload_for(request, *, user=None, grant=None, captured_metadata=None):
     with transaction.atomic():
         lock_organization(org)
         current_staff(request) if user else recipient(request)
+        if grant:
+            require_recipient_reply(recipient(request).conversation)
         staged = (
             Attachment.objects.filter(
                 organization=org, uploader=user, grant=grant, message__isnull=True
@@ -1061,7 +1107,7 @@ def upload_for(request, *, user=None, grant=None, captured_metadata=None):
             if user:
                 current_staff(request)
             else:
-                recipient(request)
+                require_recipient_reply(recipient(request).conversation)
             if not Attachment.objects.filter(
                 pk=attachment.pk, state="pending", message=None
             ).exists():

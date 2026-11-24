@@ -367,3 +367,16 @@ This supersedes earlier 1/7/30-day conversation/link expiry requirements. Recipi
 
 Recipient private replies always go to the assigned staff owner, even when the selected message was authored by another recipient. They are visible only to that replying recipient and the owner, including attachments; the owner receives a notification. Reply all remains shared with eligible To/Cc recipients and visible to the owner. BCC private copies cannot reply all. Staff can still reply privately to a recipient. Historical recipient-to-recipient private messages are now visible to the assigned owner for review; administrator status alone does not grant content access. Submission audit metadata records reply mode and whether a recipient reply is private to the owner. This supersedes earlier recipient-to-recipient private reply behavior.
 
+# API-key progress — 2026-11-12
+
+Implemented locally: administrator API-key screen, scoped bearer v1 API,
+revocation, expiry, hashed secrets and downloadable Markdown documentation.
+Validation and limitations: [API_KEYS_VALIDATION.md](API_KEYS_VALIDATION.md).
+Production rollout, PostgreSQL concurrency checks and independent review remain
+separate from local validation. No change to cryptographic release gates.
+
+November 24 extension implemented locally: API-key booking adapter, partner
+notification/OTP previews, recipient themes, explicit reply opt-in, shared sender
+streams and verified recipient mailbox Archive. Existing SelfPay triggers remain
+independent. See API_KEYS_VALIDATION.md for current validation and deployment limits.
+

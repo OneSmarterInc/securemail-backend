@@ -764,3 +764,24 @@ controlled hops retain the hybrid requirement. Measure recipient group support d
 
 pilot. Independent cryptographic review remains a production gate.
 
+# API-key access update — 2026-11-12
+
+Privileged administrators can create scoped, expiring API keys with recent MFA,
+view usage metadata and revoke keys. Secrets are shown once and stored hashed.
+The v1 server-to-server API supports protected text send, per-key message reads,
+delivery state and readiness. Administration, custody, attachments and existing
+unrelated conversations are outside this API. See [PUBLIC_API.md](PUBLIC_API.md).
+
+
+API customization update (2026-11-24): restricted HTML/CSS notification templates
+are encrypted and key-scoped; the verification button remains application-owned.
+See PUBLIC_API.md for routes, examples and constraints. The admin key list now
+supports status and permission filters in addition to name search.
+
+API recipient update (2026-11-24): optional partner notification and OTP designs,
+validated portal colors/logo and recipient-bound automatic OTP. SelfPay retains
+its established templates. API messages are read-only by default; explicit reply
+true permits recipient writes. Repeat sends reuse the same key/sender/recipient
+stream. A verified API recipient can browse other API senders addressed to that
+mailbox; API keys themselves remain isolated. Booking API calls are explicit,
+clinic-only and do not activate or replace existing SelfPay triggers.

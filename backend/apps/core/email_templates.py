@@ -13,7 +13,7 @@ def notification_content(data: dict, *, source: str | None = None) -> dict:
     """Apply service branding after the worker resolves the authorized source."""
     result = dict(data)
     if source == "selfpay":
-        if result.get("portal_challenge_id"):
+        if result.get("portal_challenge_id") or result.get("challenge_id"):
             result["subject"] = "Your MySelfPay verification code"
         result["body"] = result["body"].replace(
             "Kind regards,\nOneSmarter Support\nSupporting MySelfPay communications",

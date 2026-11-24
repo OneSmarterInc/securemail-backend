@@ -79,7 +79,7 @@ class Conversation(models.Model):
 class RecipientGrant(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     conversation = models.ForeignKey(Conversation, on_delete=models.PROTECT, related_name="grants")
-    email = models.EmailField()
+    email = models.EmailField(db_index=True)
     kind = models.CharField(max_length=3, default="to")
     token_hash = models.CharField(max_length=64, unique=True)
     revoked_at = models.DateTimeField(null=True)
@@ -413,6 +413,42 @@ class LoginFailureState(models.Model):
 
 
 # Register the independently scoped integration inbox models.
+class ApiKey(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(Organization, on_delete=models.PROTECT)
+    owner = models.ForeignKey(StaffUser, on_delete=models.PROTECT)
+    name = models.CharField(max_length=80)
+    digest = models.CharField(max_length=64)
+    scopes = models.JSONField(default=list)
+    notification_profile = models.CharField(max_length=16, default="securemail")
+    owner_version = models.PositiveIntegerField()
+    created_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    revoked_at = models.DateTimeField(null=True)
+    last_used_at = models.DateTimeField(null=True)
+    request_count = models.PositiveBigIntegerField(default=0)
+
+
+class ApiMessage(models.Model):
+    key = models.ForeignKey(ApiKey, on_delete=models.PROTECT)
+    conversation = models.OneToOneField(Conversation, on_delete=models.PROTECT)
+    presentation_ciphertext = models.TextField(blank=True, default="")
+    allow_reply = models.BooleanField(default=False)
+
+
+class ApiEmailTemplate(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    key = models.ForeignKey(ApiKey, on_delete=models.PROTECT)
+    name = models.CharField(max_length=80)
+    content_ciphertext = models.TextField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+
+class ApiBooking(models.Model):
+    key = models.ForeignKey(ApiKey, on_delete=models.PROTECT)
+    thread = models.OneToOneField("PortalThread", on_delete=models.PROTECT)
+
+
 from .portal_models import (  # noqa: E402,F401
     IntegrationNonce,
     PortalChallenge,

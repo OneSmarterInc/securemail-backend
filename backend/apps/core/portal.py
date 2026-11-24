@@ -106,6 +106,19 @@ def invitation_link(participant):
 
 def notification_source(data, job):
     """Resolve routing from scoped records, never subjects or recipient domains."""
+    if getattr(job, "conversation_id", None):
+        from .models import ApiMessage
+
+        profile = (
+            ApiMessage.objects.filter(
+                conversation_id=job.conversation_id,
+                conversation__organization_id=job.organization_id,
+            )
+            .values_list("key__notification_profile", flat=True)
+            .first()
+        )
+        if profile == "selfpay":
+            return "selfpay"
     if data.get("portal_thread"):
         return (
             PortalThread.objects.filter(
@@ -222,7 +235,7 @@ def mailbox_for(org, address):
     return mailbox
 
 
-def notify(participant, *, initial=False, booking_names=None):
+def notify(participant, *, initial=False, booking_names=None, booking_reference=None):
     thread = participant.thread
     config = integration(thread.source)
     # Suppression is enforced both here AND when the existing worker sends mail.
@@ -254,7 +267,7 @@ def notify(participant, *, initial=False, booking_names=None):
                 f"{patient} has submitted an appointment request to your clinic through MySelfPay.\n\n"
                 "MySelfPay helps patients find self-pay healthcare services and request "
                 "appointments directly with participating clinics.\n\n"
-                f"MySelfPay booking reference: {thread.external_id}\n\n"
+                f"MySelfPay booking reference: {booking_reference or thread.external_id}\n\n"
                 "Please continue to OneSmarter Secure Mail to review the full request "
                 "and review the approval action. You will be asked to verify your email using a "
                 "one-time code before accessing the conversation.\n\n"
@@ -275,7 +288,11 @@ def notify(participant, *, initial=False, booking_names=None):
 @permission_classes([AllowAny])
 def create_thread(request):
     source, config, owner = authenticate_service(request)
-    data = request.data
+    return create_partner_thread(source, config, owner, request.data)
+
+
+def create_partner_thread(source, config, owner, data, *, booking_reference=None):
+    """Shared workflow; callers must authenticate and bind source/owner first."""
     if not isinstance(data, dict):
         raise Problem("A JSON object is required.")
     if data.get("event_type") == "booking_confirmed":
@@ -388,6 +405,7 @@ def create_thread(request):
             notify(
                 participant,
                 initial=True,
+                booking_reference=booking_reference,
                 booking_names=(
                     next(
                         (p["name"] for p in normalized if p["role"] == "requester"),

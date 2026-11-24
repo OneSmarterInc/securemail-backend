@@ -2,6 +2,9 @@ from django.urls import path
 
 from backend.apps.core import (
     accounts,
+    api_bookings,
+    api_keys,
+    api_recipient_inbox,
     audit,
     auth,
     evidence,
@@ -13,6 +16,20 @@ from backend.apps.core import (
 from backend.apps.core import conversations as mail
 
 urlpatterns = [
+    path("recipient-api/recipient/inbox", api_recipient_inbox.inbox),
+    path("recipient-api/recipient/inbox/<uuid:ident>/open", api_recipient_inbox.open_conversation),
+    path("api/admin/api-keys", api_keys.keys),
+    path("api/admin/api-keys/guide", api_keys.guide),
+    path("api/admin/api-keys/<uuid:ident>/revoke", api_keys.revoke_key),
+    path("api/v1/status", api_keys.status),
+    path("api/v1/bookings", api_bookings.create_booking),
+    path("api/v1/bookings/<uuid:ident>", api_bookings.booking_detail),
+    path("api/v1/bookings/<uuid:ident>/confirmation", api_bookings.confirm_booking),
+    path("api/v1/templates", api_keys.templates),
+    path("api/v1/templates/preview", api_keys.preview_template),
+    path("api/v1/templates/<uuid:ident>", api_keys.template_detail),
+    path("api/v1/messages", api_keys.messages),
+    path("api/v1/messages/<uuid:ident>", api_keys.message_detail),
     path("api/conversations/<uuid:ident>/delivery", mail.delivery_history),
     path("recipient-api/recipient/documents", recipient_documents.documents),
     path("api/recipient/documents", recipient_documents.documents),

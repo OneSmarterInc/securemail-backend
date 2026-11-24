@@ -516,3 +516,20 @@ This supersedes earlier 1/7/30-day conversation/link expiry requirements. Recipi
 
 Recipient private replies always go to the assigned staff owner, even when the selected message was authored by another recipient. They are visible only to that replying recipient and the owner, including attachments; the owner receives a notification. Reply all remains shared with eligible To/Cc recipients and visible to the owner. BCC private copies cannot reply all. Staff can still reply privately to a recipient. Historical recipient-to-recipient private messages are now visible to the assigned owner for review; administrator status alone does not grant content access. Submission audit metadata records reply mode and whether a recipient reply is private to the owner. This supersedes earlier recipient-to-recipient private reply behavior.
 
+# API-key implementation update — 2026-11-12
+
+ApiKey stores a SHA-256 digest of a 256-bit random bearer secret, scopes, owner
+session version and expiry. ApiMessage binds newly created conversations to one
+key. Public v1 handlers enforce HTTPS in non-synthetic mode, live owner checks,
+scope checks, token-bucket limits and idempotency. Existing encryption and OTP
+flows remain in use. See [PUBLIC_API.md](PUBLIC_API.md).
+
+November 24 extension: ApiBooking binds clinic-only portal threads to their
+creating key; ApiMessage stores encrypted presentation snapshots and a reply
+policy defaulting false. ApiKey notification_profile selects normal or authorized
+SelfPay transport/branding. Templates use reconstructed HTML and allowlisted CSS;
+PNG-only portal logos require no external network fetch. Stream writes serialize
+under the existing organization lock. API-recipient inbox reads are mailbox-bound,
+and conversation switches preserve session deadlines and require CSRF. Existing
+HMAC, clinic OTP, custody and cryptographic release gates are unchanged.
+

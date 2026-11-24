@@ -274,3 +274,18 @@ Staff conversation responses include the newest 100 delivery records plus `deliv
 
 `GET /recipient-api/recipient/documents?q=...&sort=-date&page=1&page_size=25` lists available attachments in messages visible to the verified recipient, independently of the loaded message page. Sort fields are `date` and `sender`; filenames use keyed-token search. Each result includes attachment `id`, decrypted `name`, `sender`, message `date`, and `state`; downloads use the existing authorized attachment endpoint. No other conversation or private audience is included.
 
+# Public API keys
+
+The separate bearer-authenticated v1 API is documented in [PUBLIC_API.md](PUBLIC_API.md).
+Staff session endpoints below do not accept these keys.
+
+November 24 additions: SelfPay booking adapters (`/api/v1/bookings`, per-booking
+read and confirmation), notification/OTP template previews and storage, per-key
+notification profiles, and recipient presentation. API message `reply` defaults
+to false; explicit true is required to enable recipient writing. Repeated sends
+reuse the integration/sender/recipient stream. Verified API recipients can browse
+their own mailbox at `/recipient-api/recipient/inbox` and select a conversation
+with CSRF-protected POST `/recipient-api/recipient/inbox/{id}/open`. These mailbox
+routes require recipient sessions, never API keys. See PUBLIC_API.md for schemas
+and the legacy-integration boundary.
+
